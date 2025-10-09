@@ -6,14 +6,13 @@
 
 $$ \frac{\pi}{2} = \prod_{i=1}^{\infty} \frac{4i^2}{4i^2 - 1}. $$
 
-## Результаты вычислений
+## Текущая конфигурация
 
 Очередной множитель произведения на Python:
 
-```python
-def wallis_multiplier(i):
-    i_squared_times_4 = 4 * i * i
-    return i_squared_times_4 / (i_squared_times_4 - 1)
+```sh
+aduron@ubt-pg-aduron:~$ uname -a
+Linux ubt-pg-aduron 6.8.0-85-generic #85-Ubuntu SMP PREEMPT_DYNAMIC Thu Sep 18 15:26:59 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
 ```
 
 При разнице последних значений произведения $\pi / 2$ менее `1e-7` вычисленное значение $\pi = 3.1411963131348553$.
