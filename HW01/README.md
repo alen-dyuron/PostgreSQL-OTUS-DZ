@@ -103,7 +103,8 @@ All packages are up to date.
 > [!CAUTION]
 > Negative potential consequences of an action.
 
-```sh
+> [!CAUTION]
+> ```sh
 aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
 ```
 
