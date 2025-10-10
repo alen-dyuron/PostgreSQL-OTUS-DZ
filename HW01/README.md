@@ -61,15 +61,118 @@ aduron@ubt-pg-aduron:~$ ip add
 
 ### Установка Постгресса 
 
+```sh
+
+```
+
+```sh
+
+```
+
+
+```sh
+
+```
+
+
+```sh
+
+```
+
+
+```sh
+
+```
+
+
+```sh
+
+```
+
+
 
 ### Запуск сеансов 
 
+
+```sh
+aduron@ubt-pg-aduron:~$ sudo -u postgres psql
+```
+
+```sh
+postgres=# \echo AUTOCOMMIT
+AUTOCOMMIT
+postgres=# \echo :AUTOCOMMIT
+OFF
+```
 
 AUTOCOMMIT 
 When on (the default), each SQL command is automatically committed upon successful completion. To postpone commit in this mode, you must enter a BEGIN or START TRANSACTION SQL command. When off or unset, SQL commands are not committed until you explicitly issue COMMIT or END. The autocommit-off mode works by issuing an implicit BEGIN for you, just before any command that is not already in a transaction block and is not itself a BEGIN or other transaction-control command, nor a command that cannot be executed inside a transaction block (such as VACUUM).
 
 
+```sh
+postgres=# \set PROMPT1 '(%n@SESSION1)>'
+(postgres@SESSION1)>
+```
 
+```sh
+postgres=# \set PROMPT1 '(%n@SESSION2)>'
+(postgres@SESSION2)>
+```
+
+
+```sh
+(postgres@SESSION1)> create table persons(id serial, first_name text, second_name text);
+insert into persons(first_name, second_name) values('ivan', 'ivanov');
+insert into persons(first_name, second_name) values('petr', 'petrov');
+commit;
+
+CREATE TABLE
+INSERT 0 1
+INSERT 0 1
+COMMIT
+(postgres@SESSION1)>
+```
+
+
+
+## Обзор уровня изоляции транзакции
+
+```sh
+
+```
+```sh
+
+```
+```sh
+
+```
+```sh
+
+```
+```sh
+
+```
+```sh
+
+```
+```sh
+
+```
+```sh
+
+```
+```sh
+
+```
+```sh
+
+```
+```sh
+
+```
+```sh
+
+```
 
 ## Список использованных источников:
 
