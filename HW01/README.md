@@ -62,31 +62,92 @@ aduron@ubt-pg-aduron:~$ ip add
 ### Установка Постгресса 
 
 ```sh
-
+sudo apt update
 ```
 
 ```sh
-
-```
-
-
-```sh
-
+sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 ```
 
 
 ```sh
+aduron@ubt-pg-aduron:~$ curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+[sudo] password for aduron:
+File '/etc/apt/trusted.gpg.d/postgresql.gpg' exists. Overwrite? (y/N) y
+aduron@ubt-pg-aduron:~$ sudo apt update
+Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu noble InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease
+Get:5 http://apt.postgresql.org/pub/repos/apt noble-pgdg InRelease [107 kB]
+Get:6 http://apt.postgresql.org/pub/repos/apt noble-pgdg/main amd64 Packages [349 kB]
+Fetched 456 kB in 1s (399 kB/s)
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+All packages are up to date.
+```
+
+
+```sh
+aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
+```
+
+
+```sh
+aduron@ubt-pg-aduron:~$ sudo apt install postgresql-17
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following additional packages will be installed:
+  libcommon-sense-perl libjson-perl libjson-xs-perl libllvm19 libpq5 libtypes-serialiser-perl postgresql-client-17 postgresql-client-common postgresql-common ssl-cert
+Suggested packages:
+  libpq-oauth postgresql-doc-17
+The following NEW packages will be installed:
+  libcommon-sense-perl libjson-perl libjson-xs-perl libllvm19 libpq5 libtypes-serialiser-perl postgresql-17 postgresql-client-17 postgresql-client-common postgresql-common ssl-cert
+0 upgraded, 11 newly installed, 0 to remove and 0 not upgraded.
+Need to get 48.2 MB of archives.
+After this operation, 200 MB of additional disk space will be used.
+Do you want to continue? [Y/n] y
+
+[...]
+The files belonging to this database system will be owned by user "postgres".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.UTF-8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+[...]
 
 ```
 
 
 ```sh
+aduron@ubt-pg-aduron:~$ psql --version
+psql (PostgreSQL) 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
+```
 
+
+
+```sh
+aduron@ubt-pg-aduron:~$ sudo systemctl enable postgresql
+[sudo] password for aduron:
+Synchronizing state of postgresql.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable postgresql
 ```
 
 
 ```sh
+aduron@ubt-pg-aduron:~$ sudo systemctl status postgresql
+● postgresql.service - PostgreSQL RDBMS
+     Loaded: loaded (/usr/lib/systemd/system/postgresql.service; enabled; preset: enabled)
+     Active: active (exited) since Fri 2025-10-10 18:49:42 UTC; 2h 34min ago
+   Main PID: 2607 (code=exited, status=0/SUCCESS)
+        CPU: 1ms
 
+Oct 10 18:49:42 ubt-pg-aduron systemd[1]: Starting postgresql.service - PostgreSQL RDBMS...
+Oct 10 18:49:42 ubt-pg-aduron systemd[1]: Finished postgresql.service - PostgreSQL RDBMS.
 ```
 
 
@@ -137,7 +198,7 @@ COMMIT
 
 ## Обзор уровня изоляции транзакции
 
-```sh
+```sql
 (postgres@SESSION1)> \show transaction isolation level	<<<< Не то!
 invalid command \show
 Try \? for help.
@@ -156,14 +217,14 @@ ROLLBACK
 ```
 
 
-```sh
+```sql
 (postgres@SESSION1)> select count(*) from persons;
  count
 -------
      2
 (1 row)
 ```
-```sh
+```sql
 (postgres@SESSION2)>select count(*) from persons;
  count
 -------
@@ -172,11 +233,11 @@ ROLLBACK
 ```
 
 
-```sh
+```sql
 (postgres@SESSION1)> insert into persons(first_name, second_name) values('sergey', 'sergeev');
 INSERT 0 1
 ```
-```sh
+```sql
 (postgres@SESSION2)>select * from persons;
  id | first_name | second_name
 ----+------------+-------------
@@ -184,11 +245,11 @@ INSERT 0 1
   2 | petr       | petrov
 (2 rows)
 ```
-```sh
+```sql
 (postgres@SESSION1)> commit;
 COMMIT
 ```
-```sh
+```sql
 (postgres@SESSION2)>select * from persons;
  id | first_name | second_name
 ----+------------+-------------
@@ -199,7 +260,7 @@ COMMIT
 ```
 
 
-```sh
+```sql
 (postgres@SESSION1)> set transaction isolation level repeatable read;
 SET
 (postgres@SESSION1)> SHOW TRANSACTION ISOLATION LEVEL;
@@ -208,7 +269,7 @@ SET
  repeatable read
 (1 row)
 ```
-```sh
+```sql
 (postgres@SESSION2)>select * from persons;
  id | first_name | second_name
 ----+------------+-------------
@@ -217,7 +278,7 @@ SET
   3 | sergey     | sergeev
 (3 rows)
 ```
-```sh
+```sql
 (postgres@SESSION1)> insert into persons(first_name, second_name) values('sveta', 'svetova');
 INSERT 0 1
 (postgres@SESSION1)>select * from persons;
@@ -229,7 +290,7 @@ INSERT 0 1
   4 | sveta      | svetova
 (4 rows)
 ```
-```sh
+```sql
 (postgres@SESSION2)>select * from persons;
  id | first_name | second_name
 ----+------------+-------------
@@ -240,12 +301,12 @@ INSERT 0 1
 ```
 
 
-```sh
+```sql
 (postgres@SESSION1)> commit;
 COMMIT
 ```
 
-```sh
+```sql
 (postgres@SESSION2)> select * from persons;
  id | first_name | second_name
 ----+------------+-------------
@@ -253,10 +314,6 @@ COMMIT
   2 | petr       | petrov
   3 | sergey     | sergeev
 (3 rows)
-```
-
-```sh
-
 ```
 
 
