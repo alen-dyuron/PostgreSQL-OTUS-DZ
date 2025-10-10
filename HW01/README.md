@@ -65,11 +65,12 @@ aduron@ubt-pg-aduron:~$ ip add
 sudo apt update
 ```
 
+> [!NOTE]  
+> Highlights information that users should take into account, even when skimming.
+
 ```sh
 sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 ```
-
-
 ```sh
 aduron@ubt-pg-aduron:~$ curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
 [sudo] password for aduron:
@@ -88,25 +89,22 @@ Reading state information... Done
 All packages are up to date.
 ```
 
-> [!NOTE]  
-> Highlights information that users should take into account, even when skimming.
 
 > [!TIP]
 > Optional information to help a user be more successful.
 
+```sh
+aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
+```
+
+
 > [!IMPORTANT]  
 > Crucial information necessary for users to succeed.
 
-> [!WARNING]  
-> Critical content demanding immediate user attention due to potential risks.
 
-> [!CAUTION]
-> Negative potential consequences of an action.
 
-> [!CAUTION]
-> ```sh
-aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
-```
+
+
 
 
 ```sh
@@ -195,6 +193,11 @@ postgres=# \set PROMPT1 '(%n@SESSION2)> '
 (postgres@SESSION2)>
 ```
 
+> [!CAUTION]
+> Negative potential consequences of an action.
+
+
+
 
 ```sql
 (postgres@SESSION1)> create table persons(id serial, first_name text, second_name text);
@@ -212,6 +215,10 @@ COMMIT
 
 
 ## Обзор уровня изоляции транзакции
+
+> [!WARNING]  
+> Critical content demanding immediate user attention due to potential risks.
+
 
 ```sql
 (postgres@SESSION1)> \show transaction isolation level	<<<< Не то!
