@@ -59,11 +59,21 @@ aduron@ubt-pg-aduron:~$ ip add
        valid_lft forever preferred_lft forever
 ```
 
+### Установка Постгресса 
+
+
+### Запуск сеансов 
+
+
+AUTOCOMMIT 
+When on (the default), each SQL command is automatically committed upon successful completion. To postpone commit in this mode, you must enter a BEGIN or START TRANSACTION SQL command. When off or unset, SQL commands are not committed until you explicitly issue COMMIT or END. The autocommit-off mode works by issuing an implicit BEGIN for you, just before any command that is not already in a transaction block and is not itself a BEGIN or other transaction-control command, nor a command that cannot be executed inside a transaction block (such as VACUUM).
+
 
 
 
 ## Список использованных источников:
 
-1. [Matplotlib cheatsheets and handouts](https://matplotlib.org/cheatsheets/)
+1. [Установка постгресса на Ubuntu](https://dev.to/johndotowl/postgresql-17-installation-on-ubuntu-2404-5bfi?ysclid=mgjmgn34tt98683277)
 2. [Markdown Cheat Sheet](https://www.markdownguide.org/cheat-sheet/)
-3. [Writing mathematical expressions](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/writing-mathematical-expressions)
+3. [Postgres Documentation](https://www.postgresql.org/docs/current/app-psql.html)
+
