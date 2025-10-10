@@ -110,12 +110,12 @@ When on (the default), each SQL command is automatically committed upon successf
 
 
 ```sh
-postgres=# \set PROMPT1 '(%n@SESSION1)>'
+postgres=# \set PROMPT1 '(%n@SESSION1)> '
 (postgres@SESSION1)>
 ```
 
 ```sh
-postgres=# \set PROMPT1 '(%n@SESSION2)>'
+postgres=# \set PROMPT1 '(%n@SESSION2)> '
 (postgres@SESSION2)>
 ```
 
@@ -138,41 +138,127 @@ COMMIT
 ## Обзор уровня изоляции транзакции
 
 ```sh
-
+(postgres@SESSION1)> \show transaction isolation level	<<<< Не то!
+invalid command \show
+Try \? for help.
+(postgres@SESSION1)> SHOW TRANSACTION ISOLATION LEVEL;	<<<< Видимо больше ничего не работает до того как сделаем rollback
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+(postgres@SESSION1)>
+(postgres@SESSION1)> ^C           						<<<< Почему бы и нет)
+(postgres@SESSION1)>
+(postgres@SESSION1)> abort;								<<<< Ура!
+ROLLBACK
+(postgres@SESSION1)> SHOW TRANSACTION ISOLATION LEVEL;	<<<< Правильно
+ transaction_isolation
+-----------------------
+ read committed
+(1 row)
 ```
+
+
+```sh
+(postgres@SESSION1)> select count(*) from persons;
+ count
+-------
+     2
+(1 row)
+```
+```sh
+(postgres@SESSION2)>select count(*) from persons;
+ count
+-------
+     2
+(1 row)
+```
+
+
+```sh
+(postgres@SESSION1)> insert into persons(first_name, second_name) values('sergey', 'sergeev');
+INSERT 0 1
+```
+```sh
+(postgres@SESSION2)>select * from persons;
+ id | first_name | second_name
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+(2 rows)
+```
+```sh
+(postgres@SESSION1)> commit;
+COMMIT
+```
+```sh
+(postgres@SESSION2)>select * from persons;
+ id | first_name | second_name
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+  3 | sergey     | sergeev
+(3 rows)
+```
+
+
+```sh
+(postgres@SESSION1)> set transaction isolation level repeatable read;
+SET
+(postgres@SESSION1)> SHOW TRANSACTION ISOLATION LEVEL;
+ transaction_isolation
+-----------------------
+ repeatable read
+(1 row)
+```
+```sh
+(postgres@SESSION2)>select * from persons;
+ id | first_name | second_name
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+  3 | sergey     | sergeev
+(3 rows)
+```
+```sh
+(postgres@SESSION1)> insert into persons(first_name, second_name) values('sveta', 'svetova');
+INSERT 0 1
+(postgres@SESSION1)>select * from persons;
+ id | first_name | second_name
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+  3 | sergey     | sergeev
+  4 | sveta      | svetova
+(4 rows)
+```
+```sh
+(postgres@SESSION2)>select * from persons;
+ id | first_name | second_name
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+  3 | sergey     | sergeev
+(3 rows)
+```
+
+
+```sh
+(postgres@SESSION1)> commit;
+COMMIT
+```
+
+```sh
+(postgres@SESSION2)> select * from persons;
+ id | first_name | second_name
+----+------------+-------------
+  1 | ivan       | ivanov
+  2 | petr       | petrov
+  3 | sergey     | sergeev
+(3 rows)
+```
+
 ```sh
 
 ```
-```sh
 
-```
-```sh
-
-```
-```sh
-
-```
-```sh
-
-```
-```sh
-
-```
-```sh
-
-```
-```sh
-
-```
-```sh
-
-```
-```sh
-
-```
-```sh
-
-```
 
 ## Список использованных источников:
 
