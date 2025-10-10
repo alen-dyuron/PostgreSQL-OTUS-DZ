@@ -89,9 +89,7 @@ All packages are up to date.
 ```
 
 <div class="warning">
-```sh
-aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
-```
+*** NONTE
 </div>
 
 ```sh
