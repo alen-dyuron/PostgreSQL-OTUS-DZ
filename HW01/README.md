@@ -170,27 +170,26 @@ OFF
 ```
 
 > [!IMPORTANT] 
-> AUTOCOMMIT
+> Вот, что нам объясняет документация по поводу автокоммита
 >
-> When on (the default), each SQL command is automatically committed upon successful completion. To postpone commit in this mode, you must enter a BEGIN or START TRANSACTION SQL command. When off or unset, SQL commands are not committed until you explicitly issue COMMIT or END. The autocommit-off mode works by issuing an implicit BEGIN for you, just before any command that is not already in a transaction block and is not itself a BEGIN or other transaction-control command, nor a command that cannot be executed inside a transaction block (such as VACUUM).
+> *AUTOCOMMIT*
+>
+> *When on (the default), each SQL command is automatically committed upon successful completion. To postpone commit in this mode, you must enter a BEGIN or START TRANSACTION SQL command. When off or unset, SQL commands are not committed until you explicitly issue COMMIT or END. The autocommit-off mode works by issuing an implicit BEGIN for you, just before any command that is not already in a transaction block and is not itself a BEGIN or other transaction-control command, nor a command that cannot be executed inside a transaction block (such as VACUUM).*
 
-
+Далее мы меняем PROMPT каждого сеанса, чтоб лучше понимать кто делает чего, и в каком порядке:
 ```sh
 postgres=# \set PROMPT1 '(%n@SESSION1)> '
 (postgres@SESSION1)>
 ```
-
 ```sh
 postgres=# \set PROMPT1 '(%n@SESSION2)> '
 (postgres@SESSION2)>
 ```
 
 > [!CAUTION]
-> Negative potential consequences of an action.
+> После этого изменения, вольше не видны показатели транзакции (*) и ошибок (!) в промпте, но здесь не критично
 
-
-
-
+Начинаем выполнения задачи 
 ```sql
 (postgres@SESSION1)> create table persons(id serial, first_name text, second_name text);
 insert into persons(first_name, second_name) values('ivan', 'ivanov');
@@ -203,7 +202,6 @@ INSERT 0 1
 COMMIT
 (postgres@SESSION1)>
 ```
-
 
 
 ## Обзор уровня изоляции транзакции
