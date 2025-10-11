@@ -18,11 +18,7 @@ aduron@ubt-pg-aduron:~$ uname -a
 Linux ubt-pg-aduron 6.8.0-85-generic #85-Ubuntu SMP PREEMPT_DYNAMIC Thu Sep 18 15:26:59 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
 ```
 
-При разнице последних значений произведения $\pi / 2$ менее `1e-7` вычисленное значение $\pi = 3.1411963131348553$.
-
-
-
-Произведение Валлиса сходится очень медленно, поэтому рекомендуется использовать более эффективные методы вычисления числа $\pi$.
+Сетевая конфигурация организована следующим образом
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo cat /etc/netplan/01-netcfg.yaml
@@ -36,7 +32,7 @@ network:
       addresses: [192.168.56.10/24]
 ```
 
-
+... что позволить после перезапуска networking, подключится в ssh с помощью виртуалного адаптера хоста (enp0s8)
 ```sh
 aduron@ubt-pg-aduron:~$ ip add
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
@@ -58,15 +54,17 @@ aduron@ubt-pg-aduron:~$ ip add
     inet6 fe80::a00:27ff:fe21:d798/64 scope link
        valid_lft forever preferred_lft forever
 ```
+Дальше установим нашу ssh ключ, который был сгенерирован на винде с PuTTYKeygen
 
 ### Установка Постгресса 
 
+После подключения начнём с обновлением системы
 ```sh
-sudo apt update
+sudo apt update && sudo apt upgrade
 ```
 
 > [!NOTE]  
-> Highlights information that users should take into account, even when skimming.
+> Общая форма команды для установки репозитори, однако существуют и другие [в зависимости от вашей системы](https://tutorialforlinux.com/2020/10/14/how-to-add-postgresql-apt-repository-for-ubuntu-based-oses/)
 
 ```sh
 sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
