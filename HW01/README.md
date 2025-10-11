@@ -69,10 +69,11 @@ sudo apt update && sudo apt upgrade
 ```sh
 sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 ```
+
+Дальше обновим список пакетов.
 ```sh
 aduron@ubt-pg-aduron:~$ curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
 [sudo] password for aduron:
-File '/etc/apt/trusted.gpg.d/postgresql.gpg' exists. Overwrite? (y/N) y
 aduron@ubt-pg-aduron:~$ sudo apt update
 Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease
 Hit:2 http://archive.ubuntu.com/ubuntu noble InRelease
@@ -87,9 +88,8 @@ Reading state information... Done
 All packages are up to date.
 ```
 
-
 > [!TIP]
-> Optional information to help a user be more successful.
+> Curl может и завершиться с ошибками устарения сертификата. В таком случае сертификат приходится обновлять следующим образом:
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
@@ -98,12 +98,6 @@ aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
 
 > [!IMPORTANT]  
 > Crucial information necessary for users to succeed.
-
-
-
-
-
-
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo apt install postgresql-17
