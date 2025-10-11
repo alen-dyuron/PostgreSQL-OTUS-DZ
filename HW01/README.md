@@ -208,22 +208,23 @@ COMMIT
 
 > [!IMPORTANT]
 >
-> Вот детали из [документации](https://www.postgresql.org/docs/current/transaction-iso.html) по поводу изоляции транзакции
-> The SQL standard defines four levels of transaction isolation. The most strict is Serializable, which is defined by the standard in a paragraph which says that any concurrent execution of a set of Serializable transactions is guaranteed to produce the same effect as running them one at a time in some order. The other three levels are defined in terms of phenomena, resulting from interaction between concurrent transactions, which must not occur at each level. The standard notes that due to the definition of Serializable, none of these phenomena are possible at that level. (This is hardly surprising -- if the effect of the transactions must be consistent with having been run one at a time, how could you see any phenomena caused by interactions?)
+> Вот детали из [документации](https://www.postgresql.org/docs/current/transaction-iso.html) по поводу изоляции транзакции.
 > 
-> The phenomena which are prohibited at various levels are:
+> *The SQL standard defines four levels of transaction isolation. The most strict is Serializable, which is defined by the standard in a paragraph which says that any concurrent execution of a set of Serializable transactions is guaranteed to produce the same effect as running them one at a time in some order. The other three levels are defined in terms of phenomena, resulting from interaction between concurrent transactions, which must not occur at each level. The standard notes that due to the definition of Serializable, none of these phenomena are possible at that level. (This is hardly surprising -- if the effect of the transactions must be consistent with having been run one at a time, how could you see any phenomena caused by interactions?)*
+> 
+> *The phenomena which are prohibited at various levels are:*
 > 
 > __dirty read__
-> A transaction reads data written by a concurrent uncommitted transaction.
+> *A transaction reads data written by a concurrent uncommitted transaction.*
 > 
 > __nonrepeatable read__
-> A transaction re-reads data it has previously read and finds that data has been modified by another transaction (that committed since the initial read).
+> *A transaction re-reads data it has previously read and finds that data has been modified by another transaction (that committed since the initial read).*
 > 
 > __phantom read__
-> A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.
+> *A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.*
 > 
 > __serialization anomaly__
-> The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.
+> *The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.*
 
 Проверим текущее значение изолации:
 ```sql
