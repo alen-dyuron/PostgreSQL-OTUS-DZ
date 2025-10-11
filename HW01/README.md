@@ -170,11 +170,11 @@ OFF
 ```
 
 > [!IMPORTANT] 
-> Вот, что нам объясняет документация по поводу автокоммита
+> Вот, что нам объясняет документация по поводу автокоммита. Дефольтное поведение - AUTOCOMMIT ON. Что может являться опасным, если вы привыкли к средам, в которых значение - OFF по умольчанию, например Oracle Sqlplus
 >
-> *AUTOCOMMIT*
+> *__AUTOCOMMIT__*
 >
-> *When on (the default), each SQL command is automatically committed upon successful completion. To postpone commit in this mode, you must enter a BEGIN or START TRANSACTION SQL command. When off or unset, SQL commands are not committed until you explicitly issue COMMIT or END. The autocommit-off mode works by issuing an implicit BEGIN for you, just before any command that is not already in a transaction block and is not itself a BEGIN or other transaction-control command, nor a command that cannot be executed inside a transaction block (such as VACUUM).*
+> *When on (__the default__), each SQL command is automatically committed upon successful completion. To postpone commit in this mode, you must enter a BEGIN or START TRANSACTION SQL command. When off or unset, SQL commands are not committed until you explicitly issue COMMIT or END. The autocommit-off mode works by issuing an implicit BEGIN for you, just before any command that is not already in a transaction block and is not itself a BEGIN or other transaction-control command, nor a command that cannot be executed inside a transaction block (such as VACUUM).*
 
 Далее мы меняем PROMPT каждого сеанса, чтоб лучше понимать кто делает чего, и в каком порядке:
 ```sh
