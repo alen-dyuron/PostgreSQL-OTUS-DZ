@@ -96,8 +96,8 @@ aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
 ```
 
 
-> [!IMPORTANT]  
-> Crucial information necessary for users to succeed.
+> [!NOTE]  
+> Здесь установим именно в.17 постгресса, однако можно было бы запустить команду без суффикса, что позволяет установить последнюю версию. Или выбрать любую другую, например postgresql-15.
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo apt install postgresql-17
@@ -126,24 +126,21 @@ The default text search configuration will be set to "english".
 [...]
 
 ```
+В просессе установки тоже отметим что кодировка является дефольтным UTF-8, и что процессы принадлежат УЗ postgres, которая была создана.
 
-
+Проверим версию
 ```sh
 aduron@ubt-pg-aduron:~$ psql --version
 psql (PostgreSQL) 17.6 (Ubuntu 17.6-2.pgdg24.04+1)
 ```
 
-
-
+Дальше активируем службу для будущих автоматическаих запусков, потому-что мы ленивы:
 ```sh
 aduron@ubt-pg-aduron:~$ sudo systemctl enable postgresql
 [sudo] password for aduron:
 Synchronizing state of postgresql.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
 Executing: /usr/lib/systemd/systemd-sysv-install enable postgresql
-```
 
-
-```sh
 aduron@ubt-pg-aduron:~$ sudo systemctl status postgresql
 ● postgresql.service - PostgreSQL RDBMS
      Loaded: loaded (/usr/lib/systemd/system/postgresql.service; enabled; preset: enabled)
@@ -154,8 +151,6 @@ aduron@ubt-pg-aduron:~$ sudo systemctl status postgresql
 Oct 10 18:49:42 ubt-pg-aduron systemd[1]: Starting postgresql.service - PostgreSQL RDBMS...
 Oct 10 18:49:42 ubt-pg-aduron systemd[1]: Finished postgresql.service - PostgreSQL RDBMS.
 ```
-
-
 
 ### Запуск сеансов 
 
@@ -171,8 +166,9 @@ postgres=# \echo :AUTOCOMMIT
 OFF
 ```
 
-AUTOCOMMIT 
-When on (the default), each SQL command is automatically committed upon successful completion. To postpone commit in this mode, you must enter a BEGIN or START TRANSACTION SQL command. When off or unset, SQL commands are not committed until you explicitly issue COMMIT or END. The autocommit-off mode works by issuing an implicit BEGIN for you, just before any command that is not already in a transaction block and is not itself a BEGIN or other transaction-control command, nor a command that cannot be executed inside a transaction block (such as VACUUM).
+> [!IMPORTANT]  
+> AUTOCOMMIT
+> When on (the default), each SQL command is automatically committed upon successful completion. To postpone commit in this mode, you must enter a BEGIN or START TRANSACTION SQL command. When off or unset, SQL commands are not committed until you explicitly issue COMMIT or END. The autocommit-off mode works by issuing an implicit BEGIN for you, just before any command that is not already in a transaction block and is not itself a BEGIN or other transaction-control command, nor a command that cannot be executed inside a transaction block (such as VACUUM).
 
 
 ```sh
