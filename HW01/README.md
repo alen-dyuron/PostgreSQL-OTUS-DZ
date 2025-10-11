@@ -292,9 +292,10 @@ COMMIT
 ```
 
 Поведение здесь в согласии со следующей картинкой, который отмечает что в статусе Read Commited, допускается non-repeatable read, т.е. чтение новых __зафиксированных__ данных 
+![VM](img/dz1-3.png)
 
 
-
+Теперб меняем уровень изолации таким способом:
 ```sql
 (postgres@SESSION1)> set transaction isolation level repeatable read;
 SET
@@ -304,6 +305,8 @@ SET
  repeatable read
 (1 row)
 ```
+
+Наш 2й сеанс (как и 1й) пока видит 3 зафиксированные строки
 ```sql
 (postgres@SESSION2)>select * from persons;
  id | first_name | second_name
@@ -313,6 +316,7 @@ SET
   3 | sergey     | sergeev
 (3 rows)
 ```
+Добавим ещё одну через первого сеанса
 ```sql
 (postgres@SESSION1)> insert into persons(first_name, second_name) values('sveta', 'svetova');
 INSERT 0 1
@@ -325,6 +329,7 @@ INSERT 0 1
   4 | sveta      | svetova
 (4 rows)
 ```
+Пока понятно, что второй сеанс ничего не видит, посколку строка не зафиксирована.
 ```sql
 (postgres@SESSION2)>select * from persons;
  id | first_name | second_name
@@ -334,13 +339,12 @@ INSERT 0 1
   3 | sergey     | sergeev
 (3 rows)
 ```
-
-
+сделаем коммит в первом сеансе
 ```sql
 (postgres@SESSION1)> commit;
 COMMIT
 ```
-
+... и 4я строка остаётся невидимой во втором сеансе
 ```sql
 (postgres@SESSION2)> select * from persons;
  id | first_name | second_name
@@ -350,6 +354,10 @@ COMMIT
   3 | sergey     | sergeev
 (3 rows)
 ```
+
+Поведение здесь в согласии со следующей картинкой, который отмечает что в статусе repeatable read, не допускается чтения новых __зафиксированных__ данных 
+![VM](img/dz1-4.png)
+
 
 
 ## Список использованных источников:
