@@ -206,10 +206,26 @@ COMMIT
 
 ## Обзор уровня изоляции транзакции
 
-> [!WARNING]  
-> Critical content demanding immediate user attention due to potential risks.
+> [!IMPORTANT]
+>
+> Вот детали из [документации](https://www.postgresql.org/docs/current/transaction-iso.html) по поводу изоляции транзакции
+> The SQL standard defines four levels of transaction isolation. The most strict is Serializable, which is defined by the standard in a paragraph which says that any concurrent execution of a set of Serializable transactions is guaranteed to produce the same effect as running them one at a time in some order. The other three levels are defined in terms of phenomena, resulting from interaction between concurrent transactions, which must not occur at each level. The standard notes that due to the definition of Serializable, none of these phenomena are possible at that level. (This is hardly surprising -- if the effect of the transactions must be consistent with having been run one at a time, how could you see any phenomena caused by interactions?)
+> 
+> The phenomena which are prohibited at various levels are:
+> 
+> __dirty read__
+> A transaction reads data written by a concurrent uncommitted transaction.
+> 
+> __nonrepeatable read__
+> A transaction re-reads data it has previously read and finds that data has been modified by another transaction (that committed since the initial read).
+> 
+> __phantom read__
+> A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.
+> 
+> __serialization anomaly__
+> The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.
 
-
+Проверим текущее значение изолации:
 ```sql
 (postgres@SESSION1)> \show transaction isolation level	<<<< Не то!
 invalid command \show
@@ -228,7 +244,7 @@ ROLLBACK
 (1 row)
 ```
 
-
+Проверим во перых что каждый сеанс видит наши 2 строки в таблице persons
 ```sql
 (postgres@SESSION1)> select count(*) from persons;
  count
@@ -244,11 +260,12 @@ ROLLBACK
 (1 row)
 ```
 
-
+В первом сеансе делаем допольнительный INSERT
 ```sql
 (postgres@SESSION1)> insert into persons(first_name, second_name) values('sergey', 'sergeev');
 INSERT 0 1
 ```
+В данный момент сеанс 2 только видит первые 2 строки. 
 ```sql
 (postgres@SESSION2)>select * from persons;
  id | first_name | second_name
@@ -257,10 +274,12 @@ INSERT 0 1
   2 | petr       | petrov
 (2 rows)
 ```
+В первом сеансе делаем коммит
 ```sql
 (postgres@SESSION1)> commit;
 COMMIT
 ```
+После коммита, постгрес допускает *nonrepeatable read*
 ```sql
 (postgres@SESSION2)>select * from persons;
  id | first_name | second_name
@@ -270,6 +289,9 @@ COMMIT
   3 | sergey     | sergeev
 (3 rows)
 ```
+
+Поведение здесь в согласии со следующей картинкой, который отмечает что в статусе Read Commited, допускается non-repeatable read, т.е. чтение новых __зафиксированных__ данных 
+
 
 
 ```sql
@@ -334,4 +356,5 @@ COMMIT
 1. [Установка постгресса на Ubuntu](https://dev.to/johndotowl/postgresql-17-installation-on-ubuntu-2404-5bfi?ysclid=mgjmgn34tt98683277)
 2. [Markdown Cheat Sheet](https://www.markdownguide.org/cheat-sheet/)
 3. [Postgres Documentation](https://www.postgresql.org/docs/current/app-psql.html)
+4. [Transaction Isolation Levels](https://www.postgresql.org/docs/current/transaction-iso.html)
 
