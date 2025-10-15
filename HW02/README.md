@@ -269,12 +269,7 @@ aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
 aduron@ubt-pg-aduron:~$ sudo systemctl restart docker
 ```
 
-
-> [!NOTE]  
-> Здесь установим именно в.17 постгресса, однако можно было бы запустить команду без суффикса, что позволяет установить последнюю версию. Или выбрать любую другую, например postgresql-15.
-
-
-
+Снова запускаем пойск
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker search postgres
 NAME                       DESCRIPTION                                     STARS     OFFICIAL
@@ -305,6 +300,7 @@ blacklabelops/postgres     Postgres Image for Atlassian Applications       4
 fredboat/postgres          PostgreSQL 10.0 used in FredBoat's docker-co…   1
 ```
 
+И дальше забираем тот самый первый образец
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker pull postgres
 Using default tag: latest
@@ -332,7 +328,11 @@ REPOSITORY   TAG       IMAGE ID       CREATED       SIZE
 postgres     latest    194f5f2a900a   2 weeks ago   456MB
 ```
 
-запускаем	его, смонтировав /var/lib/postgresql-docker/
+> [!NOTE]  
+> Здесь забрали самый свежый и официальный в.18 постгресса, однако можно было бы скачать другие варианты.
+
+
+запускаем его, смонтировав нашу папку из хоста /var/lib/postgresql-docker/
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker run --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker postgres
@@ -347,12 +347,13 @@ Error: Database is uninitialized and superuser password is not specified.
        https://www.postgresql.org/docs/current/auth-trust.html
 ```
 
-
+Наконец-то добавим всё что нужно, для успешного запуска 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker -e POSTGRES_PASSWORD=Oracle123! -d postgres
 ebd65c850be3c6c7b252bf12e4c483bf481481fb4f719e3d5d951b6fe76598b2
 ```
 
+С этой...
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker ps
 CONTAINER ID   IMAGE      COMMAND                  CREATED              STATUS              PORTS      NAMES
