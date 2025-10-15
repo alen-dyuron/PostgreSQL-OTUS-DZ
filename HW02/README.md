@@ -267,8 +267,18 @@ aduron@ubt-pg-aduron:~$ sudo docker search postgres
 Error response from daemon: Get "https://index.docker.io/v1/search?q=postgres&n=25": tls: failed to verify certificate: x509: certificate signed by unknown authority
 ```
 
+> [!TIP]
+> команда может и завершиться с ошибками проверки сертификата. В таком случае сертификат приходится обновлять следующим образом:
+
+```sh
 aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
 aduron@ubt-pg-aduron:~$ sudo systemctl restart docker
+```
+
+
+> [!NOTE]  
+> Здесь установим именно в.17 постгресса, однако можно было бы запустить команду без суффикса, что позволяет установить последнюю версию. Или выбрать любую другую, например postgresql-15.
+
 
 
 ```sh
@@ -331,9 +341,6 @@ postgres     latest    194f5f2a900a   2 weeks ago   456MB
 запускаем	его, смонтировав /var/lib/postgresql-docker/
 
 ```sh
-sudo docker run --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker postgres
-```
-
 aduron@ubt-pg-aduron:~$ sudo docker run --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker postgres
 Error: Database is uninitialized and superuser password is not specified.
        You must specify POSTGRES_PASSWORD to a non-empty value for the
@@ -344,6 +351,8 @@ Error: Database is uninitialized and superuser password is not specified.
 
        See PostgreSQL documentation about "trust":
        https://www.postgresql.org/docs/current/auth-trust.html
+```
+
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker -e POSTGRES_PASSWORD=Oracle123! -d postgres
