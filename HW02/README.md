@@ -26,18 +26,15 @@
 
 ### 1. создать ВМ с Ubuntu 20.04/22.04 или развернуть докер любым удобным способом
 
-
-
 Мы повторно используем нашу ВМ, создана в рамках предыдущего ДЗ
 
 
 ### 2. поставить на нем Docker Engine
 
-
-
 Настройка окружения
 Устанавливаем необходимые зависимости
 
+```sh
 aduron@ubt-pg-aduron:~$ sudo apt install -y \
     apt-transport-https \
     ca-certificates \
@@ -97,24 +94,25 @@ No VM guests are running outdated hypervisor (qemu) binaries on this host.
 
 
 Установка Docker Engine
+```
 
 
-# Скачиваем и добавляем официальный GPG ключ Docker
+Скачиваем и добавляем официальный GPG ключ Docker
 
-
+```sh
 aduron@ubt-pg-aduron:~$ sudo  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 File '/usr/share/keyrings/docker-archive-keyring.gpg' exists. Overwrite? (y/N) y
+```
 
+Добавляем официальный репозиторий Docker
 
-# Добавляем официальный репозиторий Docker
-
+```sh
 aduron@ubt-pg-aduron:~$ echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
   $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 aduron@ubt-pg-aduron:~$ cat /etc/apt/sources.list.d/docker.list
 deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu   noble stable
 
-# Обновляем список пакетов
 aduron@ubt-pg-aduron:~$ sudo apt update
 Get:1 https://download.docker.com/linux/ubuntu noble InRelease [48.5 kB]
 Get:2 http://apt.postgresql.org/pub/repos/apt noble-pgdg InRelease [107 kB]
@@ -157,11 +155,11 @@ Reading package lists... Done
 Building dependency tree... Done
 Reading state information... Done
 1 package can be upgraded. Run 'apt list --upgradable' to see it.
+```
 
+Устанавливаем Docker Engine
 
-# Устанавливаем Docker Engine
-
-
+```sh
 aduron@ubt-pg-aduron:~$ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 Reading package lists... Done
 Building dependency tree... Done
@@ -240,39 +238,40 @@ No containers need to be restarted.
 No user sessions are running outdated binaries.
 
 No VM guests are running outdated hypervisor (qemu) binaries on this host.
+```
 
-
-# Проверка
+Проверка
+```sh
 aduron@ubt-pg-aduron:~$ docker -v
 Docker version 28.5.1, build e180ab8
-
-
-
+```
 
 
 ### 3. сделать каталог /var/lib/postgres
 
 
+```sh
 aduron@ubt-pg-aduron:~$ sudo mkdir -p /var/lib/postgresql-docker
 aduron@ubt-pg-aduron:~$ sudo chmod -R 666 /var/lib/postgresql-docker
 aduron@ubt-pg-aduron:~$ ls -lrt /var/lib |grep postgresql-docker
 drw-rw-rw-  2 root      root      4096 Oct 15 18:39 postgresql-docker
-
+```
 
 
 ### 4. развернуть контейнер с PostgreSQL 15 смонтировав в него /var/lib/postgresql
 
-
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker images
 REPOSITORY   TAG       IMAGE ID   CREATED   SIZE
 aduron@ubt-pg-aduron:~$ sudo docker search postgres
 Error response from daemon: Get "https://index.docker.io/v1/search?q=postgres&n=25": tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
 
 aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
-sudo systemctl restart docker
+aduron@ubt-pg-aduron:~$ sudo systemctl restart docker
 
 
-
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker search postgres
 NAME                       DESCRIPTION                                     STARS     OFFICIAL
 postgres                   The PostgreSQL object-relational database sy…   14590     [OK]
@@ -300,10 +299,9 @@ trainlineeurope/postgres   Extended version of official Postgres https:…   0
 brimstone/postgres         postgres image with traefik-cert support        0
 blacklabelops/postgres     Postgres Image for Atlassian Applications       4
 fredboat/postgres          PostgreSQL 10.0 used in FredBoat's docker-co…   1
+```
 
-
-
-
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker pull postgres
 Using default tag: latest
 latest: Pulling from library/postgres
@@ -328,13 +326,13 @@ docker.io/library/postgres:latest
 aduron@ubt-pg-aduron:~$ sudo docker image ls
 REPOSITORY   TAG       IMAGE ID       CREATED       SIZE
 postgres     latest    194f5f2a900a   2 weeks ago   456MB
+```
 
+запускаем	его, смонтировав /var/lib/postgresql-docker/
 
-# запускаем	его, смонтировав /var/lib/postgresql-docker/
-
-
+```sh
 sudo docker run --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker postgres
-
+```
 
 aduron@ubt-pg-aduron:~$ sudo docker run --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker postgres
 Error: Database is uninitialized and superuser password is not specified.
@@ -347,25 +345,22 @@ Error: Database is uninitialized and superuser password is not specified.
        See PostgreSQL documentation about "trust":
        https://www.postgresql.org/docs/current/auth-trust.html
 
-
-sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker -e POSTGRES_PASSWORD=Oracle123! -d postgres
-
-
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker -e POSTGRES_PASSWORD=Oracle123! -d postgres
 ebd65c850be3c6c7b252bf12e4c483bf481481fb4f719e3d5d951b6fe76598b2
+```
 
-
-
-
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker ps
 CONTAINER ID   IMAGE      COMMAND                  CREATED              STATUS              PORTS      NAMES
 ebd65c850be3   postgres   "docker-entrypoint.s…"   About a minute ago   Up About a minute   5432/tcp   ctn_database
-aduron@ubt-pg-aduron:~$
 
 aduron@ubt-pg-aduron:~$ sudo docker exec -it ebd65c850be3 bash
 root@ebd65c850be3:/#
+```
 
 
+```sh
 root@ebd65c850be3:/# ls -lrt /var/lib/postgresql-docker/   <<<< перепутал source и target. Отлично!
 total 4
 drwxr-xr-x 3 110 112 4096 Oct 10 18:49 17
@@ -373,52 +368,35 @@ root@ebd65c850be3:/# ls -lrt /var/lib/postgresql/   	<<<< создал друг�
 total 4
 lrwxrwxrwx 1 root root    1 Sep 30 00:06 data -> .
 drwxr-xr-x 3 root root 4096 Oct 15 19:11 18
+```
 
 
-
-----> 
-aduron@ubt-pg-aduron:~$  sudo docker stop  ebd65c850be3
+```sh
+aduron@ubt-pg-aduron:~$ sudo docker stop  ebd65c850be3
 ebd65c850be3
 aduron@ubt-pg-aduron:~$ sudo docker ps
 CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
-
-
-this is not needed
 aduron@ubt-pg-aduron:~$ sudo rm -rf /var/lib/postgresql-docker/
+```
 
+```sh
 aduron@ubt-pg-aduron:~$ sudo chmod 777 /var/lib/postgresql/
 aduron@ubt-pg-aduron:~$ ls -lrt /var/lib/ |grep postgresql
 drwxrwxrwx  3 postgres  postgres  4096 Oct 10 20:11 postgresql
-
-sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql -e POSTGRES_PASSWORD=Oracle123! -d postgres
-
 
 aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql -e POSTGRES_PASSWORD=Oracle123! -d postgres
 docker: Error response from daemon: Conflict. The container name "/ctn_database" is already in use by container "ebd65c850be3c6c7b252bf12e4c483bf481481fb4f719e3d5d951b6fe76598b2". You have to remove (or rename) that container to be able to reuse that name.
 
 Run 'docker run --help' for more information
-aduron@ubt-pg-aduron:~$ sudo docker куьщму ebd65c850be3
-docker: unknown command: docker куьщму
-
-Run 'docker --help' for more information
 aduron@ubt-pg-aduron:~$ sudo docker ps -a
 CONTAINER ID   IMAGE      COMMAND                  CREATED          STATUS                      PORTS     NAMES
 ebd65c850be3   postgres   "docker-entrypoint.s…"   14 minutes ago   Exited (0) 7 minutes ago              ctn_database
 6cf30870893e   postgres   "docker-entrypoint.s…"   16 minutes ago   Exited (1) 16 minutes ago             optimistic_benz
 48c15630249d   postgres   "docker-entrypoint.s…"   17 minutes ago   Exited (1) 17 minutes ago             unruffled_gates
 45df84ac0a70   postgres   "docker-entrypoint.s…"   23 minutes ago   Exited (1) 23 minutes ago             elated_kare
+```
 
-
-aduron@ubt-pg-aduron:~$ ls -lrt /var/lib/postgresql/
-total 8
-drwxr-xr-x 3 postgres postgres 4096 Oct 10 18:49 17
-drwxr-xr-x 3 root     root     4096 Oct 15 19:26 18
-
-
-
-
-
-
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker rm ctn_database
 ctn_database
 aduron@ubt-pg-aduron:~$ sudo docker ps -a
@@ -426,9 +404,9 @@ CONTAINER ID   IMAGE      COMMAND                  CREATED          STATUS      
 6cf30870893e   postgres   "docker-entrypoint.s…"   17 minutes ago   Exited (1) 17 minutes ago             optimistic_benz
 48c15630249d   postgres   "docker-entrypoint.s…"   18 minutes ago   Exited (1) 18 minutes ago             unruffled_gates
 45df84ac0a70   postgres   "docker-entrypoint.s…"   24 minutes ago   Exited (1) 24 minutes ago             elated_kare
+```
 
-
-
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql -e POSTGRES_PASSWORD=Oracle123! -d postgres
 1907d67b65be8a5ff9bc5f84b6744309c03a285a946f8f8623bfdef5538e73be
 aduron@ubt-pg-aduron:~$ sudo docker ps -a
@@ -437,11 +415,17 @@ CONTAINER ID   IMAGE      COMMAND                  CREATED          STATUS      
 6cf30870893e   postgres   "docker-entrypoint.s…"   17 minutes ago   Exited (1) 17 minutes ago              optimistic_benz
 48c15630249d   postgres   "docker-entrypoint.s…"   19 minutes ago   Exited (1) 18 minutes ago              unruffled_gates
 45df84ac0a70   postgres   "docker-entrypoint.s…"   24 minutes ago   Exited (1) 24 minutes ago              elated_kare
+```
 
 
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker exec -it 1907d67b65be bash
+```
 
-root@1907d67b65be:/#
+```sql
+root@1907d67b65be:/# psql -U postgres
+psql (18.0 (Debian 18.0-1.pgdg13+3))
+Type "help" for help.
 
 postgres=# \l
                                                     List of databases
@@ -453,8 +437,10 @@ postgres=# \l
  template1 | postgres | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           | =c/postgres          +
            |          |          |                 |            |            |        |           | postgres=CTc/postgres
 (3 rows)
+```
 
 
+```sql
 postgres=# create database troll_gniot_yoll;
 CREATE DATABASE
 postgres=# \l
@@ -468,11 +454,11 @@ postgres=# \l
                   |          |          |                 |            |            |        |           | postgres=CTc/postgres
  troll_gniot_yoll | postgres | UTF8     | libc            | en_US.utf8 | en_US.utf8 |        |           |
 (4 rows)
+```
 
 
 
-
-
+```sh
 aduron@ubt-pg-aduron:~$ ifconfig -a
 docker0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
         inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
@@ -518,7 +504,6 @@ vetha8866b4: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
         TX packets 15  bytes 1226 (1.2 KB)
         TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
 
-aduron@ubt-pg-aduron:~$
 aduron@ubt-pg-aduron:~$ psql -h 192.168.56.10 -p 5432 -U postgres
 psql: error: connection to server at "192.168.56.10", port 5432 failed: Connection refused
         Is the server running on that host and accepting TCP/IP connections?
@@ -528,12 +513,13 @@ psql: error: connection to server at "10.0.2.15", port 5432 failed: Connection r
 aduron@ubt-pg-aduron:~$ psql -h 172.17.0.1 -p 5432 -U postgres
 psql: error: connection to server at "172.17.0.1", port 5432 failed: Connection refused
         Is the server running on that host and accepting TCP/IP connections?
+```
+
+Тут очевидно что нужно сделать какую-то переадресацию порта, чтобы наша база стала видной извне контайнера 
+После очень краткой борьбы с этим вопросом, нашел такое [решение](https://stackoverflow.com/questions/37694987/connecting-to-postgresql-in-a-docker-container-from-outside)
 
 
-
-https://stackoverflow.com/questions/37694987/connecting-to-postgresql-in-a-docker-container-from-outside
-
-
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker rm ctn_database
 ctn_database
 aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql -e POSTGRES_PASSWORD=Oracle123! -d -p 5432:5432 postgres
@@ -545,9 +531,10 @@ c071098e2815   postgres   "docker-entrypoint.s…"   17 seconds ago   Up 17 seco
 6cf30870893e   postgres   "docker-entrypoint.s…"   36 minutes ago   Exited (1) 36 minutes ago                                                 optimistic_benz
 48c15630249d   postgres   "docker-entrypoint.s…"   37 minutes ago   Exited (1) 37 minutes ago                                                 unruffled_gates
 45df84ac0a70   postgres   "docker-entrypoint.s…"   43 minutes ago   Exited (1) 43 minutes ago                                                 elated_kare
+```
 
 
-
+```sql
 aduron@ubt-pg-aduron:~$ psql -h 192.168.56.10 -p 5432 -U postgres
 Password for user postgres:
 psql (17.6 (Ubuntu 17.6-2.pgdg24.04+1), server 18.0 (Debian 18.0-1.pgdg13+3))
@@ -568,18 +555,21 @@ postgres=# \l
 (4 rows)
 
 postgres=#
-
+```
 
 
 ### 5. развернуть контейнер с клиентом postgres
 
 
+```sh
 aduron@ubt-pg-aduron:~$ cd pgclient/
 aduron@ubt-pg-aduron:~/pgclient$ cat Dockerfile
 FROM ubuntu:latest
 # install app dependencies
 RUN apt-get update && apt-get install -y postgresql-client
+```
 
+```sh
 aduron@ubt-pg-aduron:~/pgclient$ sudo docker build -t pgclient .
 [+] Building 1.7s (6/6) FINISHED                                                    docker:default
  => [internal] load build definition from Dockerfile                                          0.0s
@@ -593,11 +583,14 @@ aduron@ubt-pg-aduron:~/pgclient$ sudo docker build -t pgclient .
  => => exporting layers                                                                       0.0s
  => => writing image sha256:529d3b45d71067ed6b74a525e61d71e15fb32ebe7c0bfbcdf280f888a96ce78e  0.0s
  => => naming to docker.io/library/pgclient   
- 
- 
- docker run sample-image
+```
 
 
+```sh
+aduron@ubt-pg-aduron:~$ docker run pgclient
+```
+
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker ps -a
 CONTAINER ID   IMAGE          COMMAND                  CREATED              STATUS                          PORTS                                         NAMES
 49be184d330d   pgclient		  "/bin/bash"              About a minute ago   Exited (0) About a minute ago                                                 musing_antonelli
@@ -605,22 +598,28 @@ c071098e2815   postgres       "docker-entrypoint.s…"   54 minutes ago       Up
 6cf30870893e   postgres       "docker-entrypoint.s…"   2 hours ago          Exited (1) 2 hours ago                                                        optimistic_benz
 48c15630249d   postgres       "docker-entrypoint.s…"   2 hours ago          Exited (1) 2 hours ago                                                        unruffled_gates
 45df84ac0a70   postgres       "docker-entrypoint.s…"   2 hours ago          Exited (1) 2 hours ago                                                        elated_kare
+```
 
-sudo docker run -it --entrypoint /bin/bash pgclient
+```sh
+aduron@ubt-pg-aduron:~$ sudo docker run -it --entrypoint /bin/bash pgclient
+```
 
+```sh
 aduron@ubt-pg-aduron:~/pgclient$ sudo docker run -it --entrypoint /bin/bash pgclient
 root@fffad7cd3eff:/#
+```
 
+```sh
 sudo docker psaduron@ubt-pg-aduron:~$ sudo docker ps
 [sudo] password for aduron:
 CONTAINER ID   IMAGE      COMMAND                  CREATED             STATUS             PORTS                                                                       NAMES
 fffad7cd3eff   pgclient   "/bin/bash"              27 seconds ago      Up 27 seconds                                                                                  goofy_curran
 c071098e2815   postgres   "docker-entrypoint.s…"   About an hour ago   Up About an hour   0.0.0.0:5                              432->5432/tcp, [::]:5432->5432/tcp   ctn_database
-
+```
 
 ### 6. подключится из контейнера с клиентом к контейнеру с сервером и сделать таблицу с парой строк
 
-
+```sql
 root@fffad7cd3eff:/# psql -h 192.168.56.10 -p 5432 -U postgres
 Password for user postgres:
 psql (16.10 (Ubuntu 16.10-0ubuntu0.24.04.1), server 18.0 (Debian 18.0-1.pgdg13+3))
@@ -633,8 +632,10 @@ ERROR:  column d.daticulocale does not exist
 LINE 8:   d.daticulocale as "ICU Locale",
           ^
 HINT:  Perhaps you meant to reference the column "d.datlocale".
+```
 
 
+```sql
 postgres=# select oid, datname, datdba, encoding,datistemplate,datallowconn,datcollate from pg_database;
   oid  |     datname      | datdba | encoding | datistemplate | datallowconn | datcollate
 -------+------------------+--------+----------+---------------+--------------+------------
@@ -643,8 +644,9 @@ postgres=# select oid, datname, datdba, encoding,datistemplate,datallowconn,datc
      1 | template1        |     10 |        6 | t             | t            | en_US.utf8
      4 | template0        |     10 |        6 | t             | f            | en_US.utf8
 (4 rows)
+```
 
-
+```sql
 postgres=# \c troll_gniot_yoll
 psql (16.10 (Ubuntu 16.10-0ubuntu0.24.04.1), server 18.0 (Debian 18.0-1.pgdg13+3))
 WARNING: psql major version 16, server major version 18.
@@ -653,10 +655,11 @@ You are now connected to database "troll_gniot_yoll" as user "postgres".
 
 troll_gniot_yoll=# create table bands (name varchar(40), rating integer);
 CREATE TABLE
-
+```
 
  view from the server container:
 
+```sql
 postgres=# \c troll_gniot_yoll
 You are now connected to database "troll_gniot_yoll" as user "postgres".
 troll_gniot_yoll=# select count(*) from bands;
@@ -664,17 +667,19 @@ troll_gniot_yoll=# select count(*) from bands;
 -------
      0
 (1 row)
+```
 
 
-
+```sql
 troll_gniot_yoll=# insert into bands values ('rammstein', 10);
 INSERT 0 1
 troll_gniot_yoll=# insert into bands values ('korpiklaani', 9);
 INSERT 0 1
 troll_gniot_yoll=# insert into bands values ('avatar', 8);
 INSERT 0 1
+```
 
-
+```sql
 troll_gniot_yoll=# select * from bands;
     name     | rating
 -------------+--------
@@ -682,11 +687,11 @@ troll_gniot_yoll=# select * from bands;
  korpiklaani |      9
  avatar      |      8
 (3 rows)
+```
 
-
+```sql
 troll_gniot_yoll=# update bands set rating = 100 where name = 'rammstein';
 UPDATE 1
-
 troll_gniot_yoll=# select * from  bands;
     name     | rating
 -------------+--------
@@ -694,19 +699,19 @@ troll_gniot_yoll=# select * from  bands;
  avatar      |      8
  rammstein   |    100
 (3 rows)
-
-
-
-
-
+```
 
 
 ### 7. подключится к контейнеру с сервером с ноутбука/компьютера извне инстансов ЯО/места установки докера
 
+Запускаем DBeaver с Windows-хоста и добавляем новое подключение к Постгресу 
+![VM](img/dz2-1.png)
 
-DBEAVER
+Проверяем соединение
+![VM](img/dz2-2.png)
 
-
+Проверяем что все данные, каторые были добавлены, видны в DBeaver
+![VM](img/dz2-3.png)
 
 
 ### 8. удалить контейнер с сервером
@@ -780,8 +785,9 @@ troll_gniot_yoll=# select * from bands;
 
 
 ## Resources
-https://dockerhosting.ru/blog/kak-ustanovit-docker-v-ubuntu/?ysclid=mgsaof0ffv708865876
-https://www.nic.ru/help/polnoe-rukovodstvo-po-ustanovke-i-nastrojke-postgresql-v-docker_11679.html?ysclid=mgsc7qijxd831502782&utm_source=yandex.ru&utm_medium=organic&utm_campaign=yandex.ru&utm_referrer=yandex.ru
+
+[Установка Докера](https://dockerhosting.ru/blog/kak-ustanovit-docker-v-ubuntu/?ysclid=mgsaof0ffv708865876)
+[Установка Постгреса в Докере](https://www.nic.ru/help/polnoe-rukovodstvo-po-ustanovke-i-nastrojke-postgresql-v-docker_11679.html?ysclid=mgsc7qijxd831502782&utm_source=yandex.ru&utm_medium=organic&utm_campaign=yandex.ru&utm_referrer=yandex.ru)
 
 
 
