@@ -1,6 +1,15 @@
-Resources
-https://dockerhosting.ru/blog/kak-ustanovit-docker-v-ubuntu/?ysclid=mgsaof0ffv708865876
-https://www.nic.ru/help/polnoe-rukovodstvo-po-ustanovke-i-nastrojke-postgresql-v-docker_11679.html?ysclid=mgsc7qijxd831502782&utm_source=yandex.ru&utm_medium=organic&utm_campaign=yandex.ru&utm_referrer=yandex.ru
+# Работа с уровнями изоляции транзакции в PostgreSQL
+
+## Цель
+
+научиться управлять уровнем изоляции транзации в PostgreSQL и понимать особенность работы уровней read commited и repeatable read
+
+## Вывор конфигурации
+
+Для установки и выполнения первого ДЗ, выбираем установку на локальной ВМ через OracleVM Virtualbox.
+ВМ имеет следующую конфигурацию
+
+![VM](img/dz1-1.png)
 
 
 
@@ -782,9 +791,9 @@ troll_gniot_yoll=# select * from bands;
 
 
 
-
-12. оставляйте в ЛК ДЗ комментарии что и как вы делали и как боролись с проблемами
-
+## Resources
+https://dockerhosting.ru/blog/kak-ustanovit-docker-v-ubuntu/?ysclid=mgsaof0ffv708865876
+https://www.nic.ru/help/polnoe-rukovodstvo-po-ustanovke-i-nastrojke-postgresql-v-docker_11679.html?ysclid=mgsc7qijxd831502782&utm_source=yandex.ru&utm_medium=organic&utm_campaign=yandex.ru&utm_referrer=yandex.ru
 
 
 
