@@ -23,9 +23,11 @@
 
 ## Выполнение
 
+
 ### 1. создать ВМ с Ubuntu 20.04/22.04 или развернуть докер любым удобным способом
 
 Мы повторно используем нашу ВМ, создана в рамках предыдущего ДЗ
+
 
 ### 2. поставить на нем Docker Engine
 
@@ -250,6 +252,7 @@ aduron@ubt-pg-aduron:~$ sudo chmod -R 666 /var/lib/postgresql-docker
 aduron@ubt-pg-aduron:~$ ls -lrt /var/lib |grep postgresql-docker
 drw-rw-rw-  2 root      root      4096 Oct 15 18:39 postgresql-docker
 ```
+
 
 ### 4. развернуть контейнер с PostgreSQL смонтировав в него /var/lib/postgresql
 
@@ -621,6 +624,7 @@ fffad7cd3eff   pgclient   "/bin/bash"              27 seconds ago      Up 27 sec
 c071098e2815   postgres   "docker-entrypoint.s…"   About an hour ago   Up About an hour   0.0.0.0:5                              432->5432/tcp, [::]:5432->5432/tcp   ctn_database
 ```
 
+
 ### 6. подключится из контейнера с клиентом к контейнеру с сервером и сделать таблицу с парой строк
 
 ```sql
@@ -708,19 +712,22 @@ troll_gniot_yoll=# select * from  bands;
 
 ### 7. подключится к контейнеру с сервером с ноутбука/компьютера извне инстансов ЯО/места установки докера
 
-Запускаем DBeaver с Windows-хоста и добавляем новое подключение к Постгресу 
+Запускаем DBeaver с Windows-хоста и добавляем новое подключение к Постгресу:
+
 ![VM](img/dz2-1.png)
 
-Проверяем соединение
+Проверяем соединение:
+
 ![VM](img/dz2-2.png)
 
-Проверяем что все данные, каторые были добавлены, видны в DBeaver
+Проверяем что все данные, каторые были добавлены, видны в DBeaver:
+
 ![VM](img/dz2-3.png)
 
 
 ### 8. удалить контейнер с сервером
 
-если запускаем сразу rm, то получаем такое предупреждение. Соответственно будем во первых стопнуть контейнер, и далее его удалить.
+Если запускаем сразу rm, то получаем такое предупреждение. Соответственно будем во первых стопнуть контейнер, и далее его удалить.
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker rm ctn_database
 [sudo] password for aduron:
@@ -752,6 +759,7 @@ aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,so
 22f19b22d019ddfe0ebdc1d8f36d87e48813a2b8abf50b85275be22521381776
 ```
 
+
 ### 10. подключится снова из контейнера с клиентом к контейнеру с сервером
 
 ```sql
@@ -772,6 +780,7 @@ postgres=# select oid, datname, datdba, encoding,datistemplate,datallowconn,datc
 (4 rows)
 ```
 
+
 ### 11. проверить, что данные остались на месте
 
 снова подключаемся к базе troll_gniot_yoll и запускаем select.
@@ -789,7 +798,6 @@ troll_gniot_yoll=# select * from bands;
  rammstein   |    100
 (3 rows)
 ```
-
 
 
 ## Resources
