@@ -23,16 +23,13 @@
 
 ## Выполнение
 
-
 ### 1. создать ВМ с Ubuntu 20.04/22.04 или развернуть докер любым удобным способом
 
 Мы повторно используем нашу ВМ, создана в рамках предыдущего ДЗ
 
-
 ### 2. поставить на нем Docker Engine
 
-Настройка окружения
-Устанавливаем необходимые зависимости
+Устанавливаем необходимые для докера зависимости 
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo apt install -y \
@@ -91,11 +88,7 @@ No containers need to be restarted.
 No user sessions are running outdated binaries.
 
 No VM guests are running outdated hypervisor (qemu) binaries on this host.
-
-
-Установка Docker Engine
 ```
-
 
 Скачиваем и добавляем официальный GPG ключ Docker
 
@@ -240,7 +233,7 @@ No user sessions are running outdated binaries.
 No VM guests are running outdated hypervisor (qemu) binaries on this host.
 ```
 
-Проверка
+Проверка версии 
 ```sh
 aduron@ubt-pg-aduron:~$ docker -v
 Docker version 28.5.1, build e180ab8
@@ -249,7 +242,8 @@ Docker version 28.5.1, build e180ab8
 
 ### 3. сделать каталог /var/lib/postgres
 
-
+В связи с тем, что у меня уже на ВМ находиться папка /var/lib/postgresql с предыдушего ДЗ, создам другую папку postgresql-docker.
+Дальше увидим, что идея такая себе.
 ```sh
 aduron@ubt-pg-aduron:~$ sudo mkdir -p /var/lib/postgresql-docker
 aduron@ubt-pg-aduron:~$ sudo chmod -R 666 /var/lib/postgresql-docker
@@ -257,9 +251,9 @@ aduron@ubt-pg-aduron:~$ ls -lrt /var/lib |grep postgresql-docker
 drw-rw-rw-  2 root      root      4096 Oct 15 18:39 postgresql-docker
 ```
 
+### 4. развернуть контейнер с PostgreSQL смонтировав в него /var/lib/postgresql
 
-### 4. развернуть контейнер с PostgreSQL 15 смонтировав в него /var/lib/postgresql
-
+Проверяем, какие у нас доступные образцы. Их нет, потому что мы до сих пор ничего не забирали 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker images
 REPOSITORY   TAG       IMAGE ID   CREATED   SIZE
@@ -725,6 +719,7 @@ troll_gniot_yoll=# select * from  bands;
 
 ### 8. удалить контейнер с сервером
 
+если запускаем сразу rm, то получаем такое предупреждение. Соответственно будем во первых стопнуть контейнер, и далее его удалить.
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker rm ctn_database
 [sudo] password for aduron:
@@ -736,6 +731,7 @@ aduron@ubt-pg-aduron:~$ sudo docker rm ctn_database
 ctn_database
 ```
 
+При этом, клиент ругается при попытке запускать любой запрос, так как соединение мы рубили со стороны сервера
 ```sql
 troll_gniot_yoll=# select * from bands;
 FATAL:  terminating connection due to administrator command
@@ -749,6 +745,7 @@ The connection to the server was lost. Attempting reset: Failed.
 
 ### 9. создать его заново
 
+Тут можно ничего не менять и перезапустить контайнер, точно как он был изначално запушен.
 ```sql
 aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql -e POSTGRES_PASSWORD=Oracle123! -d -p 5432:5432 postgres
 22f19b22d019ddfe0ebdc1d8f36d87e48813a2b8abf50b85275be22521381776
@@ -776,6 +773,7 @@ postgres=# select oid, datname, datdba, encoding,datistemplate,datallowconn,datc
 
 ### 11. проверить, что данные остались на месте
 
+снова подключаемся к базе troll_gniot_yoll и запускаем select.
 ```sql
 postgres=# \c troll_gniot_yoll
 psql (16.10 (Ubuntu 16.10-0ubuntu0.24.04.1), server 18.0 (Debian 18.0-1.pgdg13+3))
@@ -797,6 +795,3 @@ troll_gniot_yoll=# select * from bands;
 
 [Установка Докера](https://dockerhosting.ru/blog/kak-ustanovit-docker-v-ubuntu/?ysclid=mgsaof0ffv708865876)
 [Установка Постгреса в Докере](https://www.nic.ru/help/polnoe-rukovodstvo-po-ustanovke-i-nastrojke-postgresql-v-docker_11679.html?ysclid=mgsc7qijxd831502782&utm_source=yandex.ru&utm_medium=organic&utm_campaign=yandex.ru&utm_referrer=yandex.ru)
-
-
-
