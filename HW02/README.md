@@ -7,7 +7,6 @@
 
 ## План
 
-
 1. создать ВМ с Ubuntu 20.04/22.04 или развернуть докер любым удобным способом
 2. поставить на нем Docker Engine
 3. сделать каталог /var/lib/postgres
@@ -21,18 +20,19 @@
 11. проверить, что данные остались на месте
 12. оставляйте в ЛК ДЗ комментарии что и как вы делали и как боролись с проблемами
 
-====
+
+## Выполнение
 
 
-1. создать ВМ с Ubuntu 20.04/22.04 или развернуть докер любым удобным способом
-----------------------------------------------------------------------------------
+### 1. создать ВМ с Ubuntu 20.04/22.04 или развернуть докер любым удобным способом
+
 
 
 Мы повторно используем нашу ВМ, создана в рамках предыдущего ДЗ
 
 
-2. поставить на нем Docker Engine
----------------------------------
+### 2. поставить на нем Docker Engine
+
 
 
 Настройка окружения
@@ -250,8 +250,8 @@ Docker version 28.5.1, build e180ab8
 
 
 
-3. сделать каталог /var/lib/postgres
-------------------------------------
+### 3. сделать каталог /var/lib/postgres
+
 
 aduron@ubt-pg-aduron:~$ sudo mkdir -p /var/lib/postgresql-docker
 aduron@ubt-pg-aduron:~$ sudo chmod -R 666 /var/lib/postgresql-docker
@@ -260,8 +260,8 @@ drw-rw-rw-  2 root      root      4096 Oct 15 18:39 postgresql-docker
 
 
 
-4. развернуть контейнер с PostgreSQL 15 смонтировав в него /var/lib/postgresql
-------------------------------------------------------------------------------
+### 4. развернуть контейнер с PostgreSQL 15 смонтировав в него /var/lib/postgresql
+
 
 aduron@ubt-pg-aduron:~$ sudo docker images
 REPOSITORY   TAG       IMAGE ID   CREATED   SIZE
@@ -571,8 +571,8 @@ postgres=#
 
 
 
-5. развернуть контейнер с клиентом postgres
--------------------------------------------
+### 5. развернуть контейнер с клиентом postgres
+
 
 aduron@ubt-pg-aduron:~$ cd pgclient/
 aduron@ubt-pg-aduron:~/pgclient$ cat Dockerfile
@@ -618,8 +618,8 @@ fffad7cd3eff   pgclient   "/bin/bash"              27 seconds ago      Up 27 sec
 c071098e2815   postgres   "docker-entrypoint.s…"   About an hour ago   Up About an hour   0.0.0.0:5                              432->5432/tcp, [::]:5432->5432/tcp   ctn_database
 
 
-6. подключится из контейнера с клиентом к контейнеру с сервером и сделать таблицу с парой строк
------------------------------------------------------------------------------------------------
+### 6. подключится из контейнера с клиентом к контейнеру с сервером и сделать таблицу с парой строк
+
 
 root@fffad7cd3eff:/# psql -h 192.168.56.10 -p 5432 -U postgres
 Password for user postgres:
@@ -701,17 +701,17 @@ troll_gniot_yoll=# select * from  bands;
 
 
 
-7. подключится к контейнеру с сервером с ноутбука/компьютера извне инстансов ЯО/места установки докера
--------------------------------------------
+### 7. подключится к контейнеру с сервером с ноутбука/компьютера извне инстансов ЯО/места установки докера
+
 
 DBEAVER
 
 
 
 
-8. удалить контейнер с сервером
--------------------------------
+### 8. удалить контейнер с сервером
 
+```sh
 aduron@ubt-pg-aduron:~$ sudo docker rm ctn_database
 [sudo] password for aduron:
 Error response from daemon: cannot remove container "ctn_database": container is running: stop the container before removing or force remove
@@ -720,8 +720,9 @@ aduron@ubt-pg-aduron:~$ sudo docker stop ctn_database
 ctn_database
 aduron@ubt-pg-aduron:~$ sudo docker rm ctn_database
 ctn_database
+```
 
-
+```sql
 troll_gniot_yoll=# select * from bands;
 FATAL:  terminating connection due to administrator command
 server closed the connection unexpectedly
@@ -729,22 +730,19 @@ server closed the connection unexpectedly
         before or while processing the request.
 The connection to the server was lost. Attempting reset: Failed.
 The connection to the server was lost. Attempting reset: Failed.
+```
 
 
+### 9. создать его заново
 
-
-
-
-9. создать его заново
----------------------
-
+```sql
 aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql -e POSTGRES_PASSWORD=Oracle123! -d -p 5432:5432 postgres
 22f19b22d019ddfe0ebdc1d8f36d87e48813a2b8abf50b85275be22521381776
+```
 
+### 10. подключится снова из контейнера с клиентом к контейнеру с сервером
 
-10. подключится снова из контейнера с клиентом к контейнеру с сервером
---------------------------------------------------------------------
-
+```sql
 root@fffad7cd3eff:/# psql -h 192.168.56.10 -p 5432 -U postgres
 Password for user postgres:
 psql (16.10 (Ubuntu 16.10-0ubuntu0.24.04.1), server 18.0 (Debian 18.0-1.pgdg13+3))
@@ -760,15 +758,11 @@ postgres=# select oid, datname, datdba, encoding,datistemplate,datallowconn,datc
      1 | template1        |     10 |        6 | t             | t            | en_US.utf8
      4 | template0        |     10 |        6 | t             | f            | en_US.utf8
 (4 rows)
+```
 
+### 11. проверить, что данные остались на месте
 
-
-
-
-
-11. проверить, что данные остались на месте
--------------------------------------------
-
+```sql
 postgres=# \c troll_gniot_yoll
 psql (16.10 (Ubuntu 16.10-0ubuntu0.24.04.1), server 18.0 (Debian 18.0-1.pgdg13+3))
 WARNING: psql major version 16, server major version 18.
@@ -781,7 +775,7 @@ troll_gniot_yoll=# select * from bands;
  avatar      |      8
  rammstein   |    100
 (3 rows)
-
+```
 
 
 
