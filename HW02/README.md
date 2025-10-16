@@ -586,6 +586,9 @@ c071098e2815   postgres   "docker-entrypoint.s…"   About an hour ago   Up Abou
 
 ### 6. подключится из контейнера с клиентом к контейнеру с сервером и сделать таблицу с парой строк
 
+> [!NOTE]  
+> Здесь нас приветствует токое совщение, которое говорит о том что мы забрали пакет postgresql-client без установки допольнительного хранилища постгреса. Соответстенно, у нас несовпадабт верции сервера и клиента, что может привести к тому что часть функциональности недоступна. например, комманда \l видимо ожидает присутствия столбца d.daticulocale, которого нет.
+
 ```sql
 root@fffad7cd3eff:/# psql -h 192.168.56.10 -p 5432 -U postgres
 Password for user postgres:
@@ -601,7 +604,7 @@ LINE 8:   d.daticulocale as "ICU Locale",
 HINT:  Perhaps you meant to reference the column "d.datlocale".
 ```
 
-
+Тем не менее, успешно запрашиваем pg_database другим способом
 ```sql
 postgres=# select oid, datname, datdba, encoding,datistemplate,datallowconn,datcollate from pg_database;
   oid  |     datname      | datdba | encoding | datistemplate | datallowconn | datcollate
@@ -613,6 +616,7 @@ postgres=# select oid, datname, datdba, encoding,datistemplate,datallowconn,datc
 (4 rows)
 ```
 
+Подключаемся к тролловой базе и добавляем таблицу с некоторыми данными.
 ```sql
 postgres=# \c troll_gniot_yoll
 psql (16.10 (Ubuntu 16.10-0ubuntu0.24.04.1), server 18.0 (Debian 18.0-1.pgdg13+3))
@@ -624,8 +628,7 @@ troll_gniot_yoll=# create table bands (name varchar(40), rating integer);
 CREATE TABLE
 ```
 
- view from the server container:
-
+Со стороны контэйнера *ctn_database* таблица прекрасно видна.
 ```sql
 postgres=# \c troll_gniot_yoll
 You are now connected to database "troll_gniot_yoll" as user "postgres".
@@ -636,7 +639,7 @@ troll_gniot_yoll=# select count(*) from bands;
 (1 row)
 ```
 
-
+Добавление данных:
 ```sql
 troll_gniot_yoll=# insert into bands values ('rammstein', 10);
 INSERT 0 1
@@ -646,16 +649,7 @@ troll_gniot_yoll=# insert into bands values ('avatar', 8);
 INSERT 0 1
 ```
 
-```sql
-troll_gniot_yoll=# select * from bands;
-    name     | rating
--------------+--------
- rammstein   |     10
- korpiklaani |      9
- avatar      |      8
-(3 rows)
-```
-
+Ой, не то значение, сек.
 ```sql
 troll_gniot_yoll=# update bands set rating = 100 where name = 'rammstein';
 UPDATE 1
@@ -686,7 +680,7 @@ troll_gniot_yoll=# select * from  bands;
 
 ### 8. удалить контейнер с сервером
 
-Если запускаем сразу rm, то получаем такое предупреждение. Соответственно будем во первых стопнуть контейнер, и далее его удалить.
+Если запускаем сразу rm, то получаем такое предупреждение. Соответственно мы будем во первых стопнуть контейнер, и далее его удалить.
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker rm ctn_database
 [sudo] password for aduron:
@@ -712,7 +706,7 @@ The connection to the server was lost. Attempting reset: Failed.
 
 ### 9. создать его заново
 
-Тут можно ничего не менять и перезапустить контайнер, точно как он был изначално запушен.
+Тут можно ничего не менять и перезапустить контайнер, точно так, как мы его в прошлой раз создали.
 ```sql
 aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql -e POSTGRES_PASSWORD=Oracle123! -d -p 5432:5432 postgres
 22f19b22d019ddfe0ebdc1d8f36d87e48813a2b8abf50b85275be22521381776
@@ -721,6 +715,7 @@ aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,so
 
 ### 10. подключится снова из контейнера с клиентом к контейнеру с сервером
 
+Снова подключаемся из контэйнера *pgclient* и проверим, что тролловая база осталась на месте
 ```sql
 root@fffad7cd3eff:/# psql -h 192.168.56.10 -p 5432 -U postgres
 Password for user postgres:
