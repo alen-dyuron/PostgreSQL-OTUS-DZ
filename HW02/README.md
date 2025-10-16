@@ -529,7 +529,9 @@ postgres=#
 
 ### 5. развернуть контейнер с клиентом postgres
 
-Здесь некоторые варианты уже существуют, 
+Здесь некоторые варианты [уже существуют](https://datmt.com/backend/quering-postgresql-with-docker/), но мало чего обьясняют касательно самого процесса создание такого мини-контэйнера. Я в итоге решил создавать отдельный шаблон, с помощью очень простого файла Dockerfile. Внутри добавлять:
+1. источник (здесь выбрал Ubuntu для совпадения но для минималистов можно пользоваться *FROM SCRATCH*)
+2. комманду установки интересних нам пакетов, в данном случае postgresql-client
 ```sh
 aduron@ubt-pg-aduron:~$ cd pgclient/
 aduron@ubt-pg-aduron:~/pgclient$ cat Dockerfile
@@ -537,7 +539,7 @@ FROM ubuntu:latest
 # install app dependencies
 RUN apt-get update && apt-get install -y postgresql-client
 ```
-
+Дальше запускаем создание шаблона под названием pgclient  
 ```sh
 aduron@ubt-pg-aduron:~/pgclient$ sudo docker build -t pgclient .
 [+] Building 1.7s (6/6) FINISHED                                                    docker:default
@@ -553,12 +555,11 @@ aduron@ubt-pg-aduron:~/pgclient$ sudo docker build -t pgclient .
  => => writing image sha256:529d3b45d71067ed6b74a525e61d71e15fb32ebe7c0bfbcdf280f888a96ce78e  0.0s
  => => naming to docker.io/library/pgclient   
 ```
-
-
+Если с ним только запустить *run*, то увидим что контэйнер сразу завершаеться, так как мы не определили точки входа в докер-файле
 ```sh
 aduron@ubt-pg-aduron:~$ docker run pgclient
 ```
-
+Соответственно:
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker ps -a
 CONTAINER ID   IMAGE          COMMAND                  CREATED              STATUS                          PORTS                                         NAMES
@@ -568,16 +569,12 @@ c071098e2815   postgres       "docker-entrypoint.s…"   54 minutes ago       Up
 48c15630249d   postgres       "docker-entrypoint.s…"   2 hours ago          Exited (1) 2 hours ago                                                        unruffled_gates
 45df84ac0a70   postgres       "docker-entrypoint.s…"   2 hours ago          Exited (1) 2 hours ago                                                        elated_kare
 ```
-
-```sh
-aduron@ubt-pg-aduron:~$ sudo docker run -it --entrypoint /bin/bash pgclient
-```
-
+Мы всё же можем это сделать в интерактивном виде, следующим способом. Тогда точной входа является двойчный /bin/bash ...
 ```sh
 aduron@ubt-pg-aduron:~/pgclient$ sudo docker run -it --entrypoint /bin/bash pgclient
 root@fffad7cd3eff:/#
 ```
-
+... таким образом, наш клиент продолжает функционировать, что позволить нам запустить psql:
 ```sh
 sudo docker psaduron@ubt-pg-aduron:~$ sudo docker ps
 [sudo] password for aduron:
