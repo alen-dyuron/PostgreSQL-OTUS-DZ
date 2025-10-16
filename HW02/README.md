@@ -26,12 +26,20 @@
 
 ### 1. создать ВМ с Ubuntu 20.04/22.04 или развернуть докер любым удобным способом
 
-Мы повторно используем нашу ВМ, создана в рамках предыдущего ДЗ
+Мы повторно используем нашу ВМ, создана в рамках предыдущего ДЗ, на Ubuntu 24.04 Server - 8ГБ памяти
 
+```sh
+aduron@ubt-pg-aduron:~$ uname -a
+Linux ubt-pg-aduron 6.8.0-85-generic #85-Ubuntu SMP PREEMPT_DYNAMIC Thu Sep 18 15:26:59 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+aduron@ubt-pg-aduron:~$ free
+               total        used        free      shared  buff/cache   available
+Mem:         8132680      483472     7507044       13992      392704     7649208
+Swap:              0           0           0
+```
 
 ### 2. поставить на нем Docker Engine
 
-Устанавливаем необходимые для докера зависимости 
+Во первых устанавливаем необходимые для докера зависимости 
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo apt install -y \
@@ -152,7 +160,7 @@ Reading state information... Done
 1 package can be upgraded. Run 'apt list --upgradable' to see it.
 ```
 
-Устанавливаем Docker Engine
+Далее устанавливаем Docker Engine
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -235,7 +243,7 @@ No user sessions are running outdated binaries.
 No VM guests are running outdated hypervisor (qemu) binaries on this host.
 ```
 
-Проверка версии 
+Проверка версии Докера после установки
 ```sh
 aduron@ubt-pg-aduron:~$ docker -v
 Docker version 28.5.1, build e180ab8
@@ -256,7 +264,7 @@ drw-rw-rw-  2 root      root      4096 Oct 15 18:39 postgresql-docker
 
 ### 4. развернуть контейнер с PostgreSQL смонтировав в него /var/lib/postgresql
 
-Проверяем, какие у нас доступные образцы. Их нет, потому что мы до сих пор ничего не забирали 
+Проверяем, какие у нас доступные образцы. Их нет, потому что мы до сих пор ничего не запрашивали 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker images
 REPOSITORY   TAG       IMAGE ID   CREATED   SIZE
@@ -265,14 +273,14 @@ Error response from daemon: Get "https://index.docker.io/v1/search?q=postgres&n=
 ```
 
 > [!TIP]
-> команда может и завершиться с ошибками проверки сертификата. В таком случае сертификат приходится обновлять следующим образом:
+> команда может и завершиться с ошибками, опять таки во время проверки сертификата. В таком случае сертификат приходится обновлять следующим образом:
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo apt upgrade ca-certificates
 aduron@ubt-pg-aduron:~$ sudo systemctl restart docker
 ```
 
-Снова запускаем пойск
+Снова запускаем пойск после перезапуска докера
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker search postgres
 NAME                       DESCRIPTION                                     STARS     OFFICIAL
@@ -303,7 +311,7 @@ blacklabelops/postgres     Postgres Image for Atlassian Applications       4
 fredboat/postgres          PostgreSQL 10.0 used in FredBoat's docker-co…   1
 ```
 
-И дальше забираем тот самый первый образец
+И дальше забираем тот самый первый образец, в этот раз успешно
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker pull postgres
 Using default tag: latest
@@ -335,8 +343,8 @@ postgres     latest    194f5f2a900a   2 weeks ago   456MB
 > Здесь забрали самый свежый и официальный в.18 постгресса, однако можно было бы скачать другие варианты.
 
 
-запускаем его, смонтировав нашу папку из хоста /var/lib/postgresql-docker/
-
+запускаем его, смонтировав нашу папку из хоста */var/lib/postgresql-docker/*
+Видимо что-то тут не хватает
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker run --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker postgres
 Error: Database is uninitialized and superuser password is not specified.
@@ -350,13 +358,15 @@ Error: Database is uninitialized and superuser password is not specified.
        https://www.postgresql.org/docs/current/auth-trust.html
 ```
 
+Если посмотреть в [документации](https://hub.docker.com/_/postgres) этого образца, замечаем список переменных, которых можно включить при запуске
+Также замечается что POSTGRES_PASSWORD необходимо предоставить для запуска этого образца
 Наконец-то добавим всё что нужно, для успешного запуска 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker run --name ctn_database --mount type=bind,source=/var/lib/postgresql,target=/var/lib/postgresql-docker -e POSTGRES_PASSWORD=Oracle123! -d postgres
 ebd65c850be3c6c7b252bf12e4c483bf481481fb4f719e3d5d951b6fe76598b2
 ```
 
-С этой...
+С этой теперь всё в порядке, контэйнер запустился, и можем к нему обращаться:
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker ps
 CONTAINER ID   IMAGE      COMMAND                  CREATED              STATUS              PORTS      NAMES
@@ -366,27 +376,27 @@ aduron@ubt-pg-aduron:~$ sudo docker exec -it ebd65c850be3 bash
 root@ebd65c850be3:/#
 ```
 
-
+И здесь видимо, что-то не так:
 ```sh
 root@ebd65c850be3:/# ls -lrt /var/lib/postgresql-docker/   <<<< перепутал source и target. Отлично!
 total 4
 drwxr-xr-x 3 110 112 4096 Oct 10 18:49 17
-root@ebd65c850be3:/# ls -lrt /var/lib/postgresql/   	<<<< создал другую папку, при это узнали что у нас V18 в докере. 
+root@ebd65c850be3:/# ls -lrt /var/lib/postgresql/   	<<<< сам докер создал другую папку при запуске. 
 total 4
 lrwxrwxrwx 1 root root    1 Sep 30 00:06 data -> .
 drwxr-xr-x 3 root root 4096 Oct 15 19:11 18
 ```
 
+> [!NOTE]  
+> Для опции --mount, источиком явлается папка на хосте, а target - папка в контэйнере.
 
+Ладно, перезапустим наш контэйнер, в этот раз с правилным вариантом монтажа
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker stop  ebd65c850be3
 ebd65c850be3
 aduron@ubt-pg-aduron:~$ sudo docker ps
 CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
 aduron@ubt-pg-aduron:~$ sudo rm -rf /var/lib/postgresql-docker/
-```
-
-```sh
 aduron@ubt-pg-aduron:~$ sudo chmod 777 /var/lib/postgresql/
 aduron@ubt-pg-aduron:~$ ls -lrt /var/lib/ |grep postgresql
 drwxrwxrwx  3 postgres  postgres  4096 Oct 10 20:11 postgresql
@@ -402,6 +412,9 @@ ebd65c850be3   postgres   "docker-entrypoint.s…"   14 minutes ago   Exited (0)
 48c15630249d   postgres   "docker-entrypoint.s…"   17 minutes ago   Exited (1) 17 minutes ago             unruffled_gates
 45df84ac0a70   postgres   "docker-entrypoint.s…"   23 minutes ago   Exited (1) 23 minutes ago             elated_kare
 ```
+
+> [!NOTE]  
+> Можно было бы запустить такой же образец *postgres* с другим названием, но здесь предпочитаю его удалить польностью и пересоздавать.
 
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker rm ctn_database
@@ -424,11 +437,11 @@ CONTAINER ID   IMAGE      COMMAND                  CREATED          STATUS      
 45df84ac0a70   postgres   "docker-entrypoint.s…"   24 minutes ago   Exited (1) 24 minutes ago              elated_kare
 ```
 
-
+Подключаемся к нему и запустим bash
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker exec -it 1907d67b65be bash
 ```
-
+Отсюда можно уже запустить psql
 ```sql
 root@1907d67b65be:/# psql -U postgres
 psql (18.0 (Debian 18.0-1.pgdg13+3))
@@ -446,7 +459,7 @@ postgres=# \l
 (3 rows)
 ```
 
-
+Далее создадим минималную базу данных 
 ```sql
 postgres=# create database troll_gniot_yoll;
 CREATE DATABASE
@@ -463,69 +476,18 @@ postgres=# \l
 (4 rows)
 ```
 
-
+Можно ли с этими настройками, подключиться к базе извне контэйнера? проверим, сначала 
 
 ```sh
-aduron@ubt-pg-aduron:~$ ifconfig -a
-docker0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
-        inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
-        inet6 fe80::acaa:92ff:fe17:8fbb  prefixlen 64  scopeid 0x20<link>
-        ether ae:aa:92:17:8f:bb  txqueuelen 0  (Ethernet)
-        RX packets 9  bytes 252 (252.0 B)
-        RX errors 0  dropped 0  overruns 0  frame 0
-        TX packets 11  bytes 1186 (1.1 KB)
-        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
-
-enp0s3: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
-        inet 10.0.2.15  netmask 255.255.255.0  broadcast 10.0.2.255
-        inet6 fe80::a00:27ff:fe05:2d38  prefixlen 64  scopeid 0x20<link>
-        ether 08:00:27:05:2d:38  txqueuelen 1000  (Ethernet)
-        RX packets 112462  bytes 168795235 (168.7 MB)
-        RX errors 0  dropped 0  overruns 0  frame 0
-        TX packets 11083  bytes 818452 (818.4 KB)
-        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
-
-enp0s8: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
-        inet 192.168.56.10  netmask 255.255.255.0  broadcast 192.168.56.255
-        inet6 fe80::a00:27ff:fe21:d798  prefixlen 64  scopeid 0x20<link>
-        ether 08:00:27:21:d7:98  txqueuelen 1000  (Ethernet)
-        RX packets 3032  bytes 284452 (284.4 KB)
-        RX errors 0  dropped 0  overruns 0  frame 0
-        TX packets 1623  bytes 244338 (244.3 KB)
-        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
-
-lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536
-        inet 127.0.0.1  netmask 255.0.0.0
-        inet6 ::1  prefixlen 128  scopeid 0x10<host>
-        loop  txqueuelen 1000  (Local Loopback)
-        RX packets 246  bytes 31078 (31.0 KB)
-        RX errors 0  dropped 0  overruns 0  frame 0
-        TX packets 246  bytes 31078 (31.0 KB)
-        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
-
-vetha8866b4: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500
-        inet6 fe80::94fc:b0ff:fe43:54ac  prefixlen 64  scopeid 0x20<link>
-        ether 96:fc:b0:43:54:ac  txqueuelen 0  (Ethernet)
-        RX packets 3  bytes 126 (126.0 B)
-        RX errors 0  dropped 0  overruns 0  frame 0
-        TX packets 15  bytes 1226 (1.2 KB)
-        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
-
 aduron@ubt-pg-aduron:~$ psql -h 192.168.56.10 -p 5432 -U postgres
 psql: error: connection to server at "192.168.56.10", port 5432 failed: Connection refused
-        Is the server running on that host and accepting TCP/IP connections?
-aduron@ubt-pg-aduron:~$ psql -h 10.0.2.15 -p 5432 -U postgres
-psql: error: connection to server at "10.0.2.15", port 5432 failed: Connection refused
-        Is the server running on that host and accepting TCP/IP connections?
-aduron@ubt-pg-aduron:~$ psql -h 172.17.0.1 -p 5432 -U postgres
-psql: error: connection to server at "172.17.0.1", port 5432 failed: Connection refused
         Is the server running on that host and accepting TCP/IP connections?
 ```
 
 Тут очевидно что нужно сделать какую-то переадресацию порта, чтобы наша база стала видной извне контайнера 
 После очень краткой борьбы с этим вопросом, нашел такое [решение](https://stackoverflow.com/questions/37694987/connecting-to-postgresql-in-a-docker-container-from-outside)
 
-
+В итоге, опять придётся пересоздавать этот контэйнер, добавляя деполнительную опцию *-p*
 ```sh
 aduron@ubt-pg-aduron:~$ sudo docker rm ctn_database
 ctn_database
@@ -540,7 +502,7 @@ c071098e2815   postgres   "docker-entrypoint.s…"   17 seconds ago   Up 17 seco
 45df84ac0a70   postgres   "docker-entrypoint.s…"   43 minutes ago   Exited (1) 43 minutes ago                                                 elated_kare
 ```
 
-
+...и тогда успешно может подключатся с хоста:
 ```sql
 aduron@ubt-pg-aduron:~$ psql -h 192.168.56.10 -p 5432 -U postgres
 Password for user postgres:
@@ -567,7 +529,7 @@ postgres=#
 
 ### 5. развернуть контейнер с клиентом postgres
 
-
+Здесь некоторые варианты уже существуют, 
 ```sh
 aduron@ubt-pg-aduron:~$ cd pgclient/
 aduron@ubt-pg-aduron:~/pgclient$ cat Dockerfile
@@ -804,3 +766,4 @@ troll_gniot_yoll=# select * from bands;
 
 1. [Установка Докера](https://dockerhosting.ru/blog/kak-ustanovit-docker-v-ubuntu/?ysclid=mgsaof0ffv708865876)
 2. [Установка Постгреса в Докере](https://www.nic.ru/help/polnoe-rukovodstvo-po-ustanovke-i-nastrojke-postgresql-v-docker_11679.html?ysclid=mgsc7qijxd831502782&utm_source=yandex.ru&utm_medium=organic&utm_campaign=yandex.ru&utm_referrer=yandex.ru)
+3. [Docker Hub - Postgres Образец](https://hub.docker.com/_/postgres)
