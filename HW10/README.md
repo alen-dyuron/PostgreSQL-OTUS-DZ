@@ -28,7 +28,7 @@
 ## Структура таблиц
 
 > [!NOTE]
-> Для выполнения этого ДЗ снова пользуемся кластером в.17 [демо-базой от PostgresPro](https://postgrespro.ru/education/demodb). 
+> Для выполнения этого ДЗ снова пользуемся кластером в.17 c [демо-базой от PostgresPro](https://postgrespro.ru/education/demodb). 
 
 
 ![VM](img/dz9-1.png)
@@ -347,5 +347,6 @@ demo-# select * from flights where status = 'Arrived' and actual_departure > '20
 
 
 ## Ресурсы 
+
 
 1. [PostgresPro Demo DB](https://postgrespro.ru/education/demodb)
