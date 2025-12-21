@@ -56,6 +56,9 @@ Ver Cluster Port Status Owner    Data directory              Log file
 17  main    5432 online postgres /var/lib/postgresql/17/main /var/log/postgresql/postgresql-17-main.log
 ```
 
+В итоге получим такую архитектуру:
+![VM](img/dz14-1.png)
+
 ## Выполнение
 
 ### 1. Настройте Кластер 1
