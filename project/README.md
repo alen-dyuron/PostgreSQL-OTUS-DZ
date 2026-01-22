@@ -9,7 +9,7 @@ __Создание и тестирование высоконагруженно�
 Цель проекта: Создать высокодоступный кластер PostgreSQL, развёртывание и обслуживание которого будут автоматизированы модулями Patroni и etcd, и тестировать отказоустойчивость кластера в рамках планированного и непланированного переключения роли.
 
 - [x] Создание виртуалной кластеризованной среды Ubuntu c распределённом хранилищем конфигурации etcd
-- [ ] Настраивание модули управления Patroni
+- [x] Настраивание модули управления Patroni
 - [ ] Тестирование переключения и отказоустойчивости кластера
 - [ ] ...
 
@@ -55,7 +55,7 @@ __Создание и тестирование высоконагруженно�
 
 ### Диаграм архитектуры
 
-
+</br><img src="img/diagram.png" width="1000" />
 
 ## Выполнение проекта
 
@@ -1553,8 +1553,7 @@ aduron@ubt-pg-aduron-dbnode2:~$ ectl endpoint status -w table
 +----------------------------------+------------------+---------+---------+-----------+------------+-----------+------------+--------------------+--------+
 ```
 
-После много времени, пытаясь понимать чтоздесь произошло, стало понятнить что у нас здесь опять таки одно последствие клонирование. Причина в конце концов, нашел [здесь](https://stackoverflow.com/questions/40585943/etcd-cluster-id-mistmatch):
-
+После много времени, пытаясь понимать что здесь произошло, стало понятным что у нас здесь опять таки одно последствие клонирования. Причина в конце концов, нашел [здесь](https://stackoverflow.com/questions/40585943/etcd-cluster-id-mistmatch):
 
 > *Running an etcd instance with "--cluster-state new" at any point, will generate a cluster ID in the data directory. If you try to then/later join an existing cluster, it will use that old generated cluster ID (which is when the mismatch error occurs). Yes, technically the OP had an "old cluster" but more likely, and 100% common, is when someone is trying to stand up their first cluster, they don't notice the procedure has to change. I find that etcd kind of generally fails in providing a good usage model.*
 
@@ -1624,6 +1623,1027 @@ aduron@ubt-pg-aduron-cluster3:~$ sudo vi /etc/default/etcd/ubt-pg-aduron-etcd3.c
 
 ### Настраивание модули управления Patroni
 
+#### Подготовка Постгреса 
+
+Нам приходится отключить службу Постгреса, так как кластером будем управлять Patroni в конце концов.
+```sh
+aduron@ubt-pg-aduron-dbnode1:~$ sudo systemctl stop postgresql@18-main.service
+aduron@ubt-pg-aduron-dbnode1:~$ sudo systemctl disable postgresql@18-main.service
+aduron@ubt-pg-aduron-dbnode1:~$ sudo systemctl daemon-reload
+
+aduron@ubt-pg-aduron-dbnode2:~/scripts$ sudo systemctl stop postgresql@18-main.service
+[sudo] password for aduron:
+aduron@ubt-pg-aduron-dbnode2:~/scripts$ sudo systemctl disable postgresql@18-main.service
+aduron@ubt-pg-aduron-dbnode2:~/scripts$ sudo systemctl daemon-reload
+```
+
+На обоих нодах, создадим пространство для расмешения каталога постгресса. У нас же достато мест осталось в VG.
+
+```sh
+aduron@ubt-pg-aduron-dbnode1:~$ sudo vgdisplay
+  --- Volume group ---
+  VG Name               ubuntu-vg
+  System ID
+  Format                lvm2
+  Metadata Areas        1
+  Metadata Sequence No  2
+  VG Access             read/write
+  VG Status             resizable
+  MAX LV                0
+  Cur LV                1
+  Open LV               1
+  Max PV                0
+  Cur PV                1
+  Act PV                1
+  VG Size               <23.00 GiB
+  PE Size               4.00 MiB
+  Total PE              5887
+  Alloc PE / Size       2943 / <11.50 GiB
+  Free  PE / Size       2944 / 11.50 GiB
+  VG UUID               aCKgUM-D4Sh-byJs-4NnY-Jp2w-sJLL-Ac7T90
+```
+```sh
+aduron@ubt-pg-aduron-dbnode1:~$ sudo lvcreate -l 80%FREE -n lv-pgcatalog-01 ubuntu-vg
+  Logical volume "lv-pgcatalog-01" created.
+aduron@ubt-pg-aduron-dbnode2:~$ sudo lvcreate -l 80%FREE -n lv-pgcatalog-01 ubuntu-vg
+  Logical volume "lv-pgcatalog-01" created.
+```
+```sh
+aduron@ubt-pg-aduron-dbnode1:~$ sudo mkfs.ext4 /dev/ubuntu-vg/lv-pgcatalog-01
+mke2fs 1.47.0 (5-Feb-2023)
+Creating filesystem with 2411520 4k blocks and 603840 inodes
+Filesystem UUID: 56247dc7-02e7-4a83-8dd3-51b79b92bc5c
+Superblock backups stored on blocks:
+        32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632
+
+Allocating group tables: done
+Writing inode tables: done
+Creating journal (16384 blocks): done
+Writing superblocks and filesystem accounting information: done
+
+aduron@ubt-pg-aduron-dbnode2:~$ sudo mkfs.ext4 /dev/ubuntu-vg/lv-pgcatalog-01
+mke2fs 1.47.0 (5-Feb-2023)
+Creating filesystem with 2411520 4k blocks and 603840 inodes
+Filesystem UUID: 51d00d46-57d9-499c-841a-b8e5921a7596
+Superblock backups stored on blocks:
+        32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632
+
+Allocating group tables: done
+Writing inode tables: done
+Creating journal (16384 blocks): done
+Writing superblocks and filesystem accounting information: done
+```
+```sh
+aduron@ubt-pg-aduron-dbnode1:~$ sudo mkdir /mnt/data
+aduron@ubt-pg-aduron-dbnode1:~$ sudo mount /dev/ubuntu-vg/lv-pgcatalog-01 /mnt/data
+aduron@ubt-pg-aduron-dbnode1:~$ sudo chown -R postgres:postgres /mnt/data/
+
+aduron@ubt-pg-aduron-dbnode2:~$ sudo mkdir /mnt/data
+aduron@ubt-pg-aduron-dbnode2:~$ sudo mount /dev/ubuntu-vg/lv-pgcatalog-01 /mnt/data
+aduron@ubt-pg-aduron-dbnode2:~$ sudo chown -R postgres:postgres /mnt/data/
+```
+
+> [!WARNING]
+> Не забывать добавить его в fstab для автоматичного смонтирования после перезагрузки
+```sh
+aduron@ubt-pg-aduron-dbnode1:~$ ls -lrt /dev/disk/by-uuid/
+total 0
+lrwxrwxrwx 1 root root 10 Jan 16 16:40 221a5c77-adde-4fdb-93df-b9994bfb9798 -> ../../sda2
+lrwxrwxrwx 1 root root 10 Jan 16 16:40 74f57005-3b9a-4ec7-a82d-31e921387bef -> ../../dm-0
+lrwxrwxrwx 1 root root 10 Jan 16 18:49 56247dc7-02e7-4a83-8dd3-51b79b92bc5c -> ../../dm-1 <<
+
+# Added this line
+/dev/disk/by-uuid/56247dc7-02e7-4a83-8dd3-51b79b92bc5c /mnt/data ext4 defaults 0 1
+
+# Ребут для проверки
+aduron@ubt-pg-aduron-dbnode1:~$ sudo reboot
+
+Broadcast message from root@ubt-pg-aduron-dbnode1 on pts/1 (Fri 2026-01-16 19:02:48 UTC):
+
+The system will reboot now!
+
+aduron@ubt-pg-aduron-dbnode1:~$ df -h
+Filesystem                                Size  Used Avail Use% Mounted on
+tmpfs                                     197M  1.1M  196M   1% /run
+/dev/mapper/ubuntu--vg-ubuntu--lv          12G  5.2G  5.5G  49% /
+tmpfs                                     984M  1.1M  983M   1% /dev/shm
+tmpfs                                     5.0M     0  5.0M   0% /run/lock
+/dev/mapper/ubuntu--vg-lv--pgcatalog--01  9.0G   24K  8.5G   1% /mnt/data
+/dev/sda2                                 2.0G  102M  1.7G   6% /boot
+tmpfs                                     197M   12K  197M   1% /run/user/1000
+```
+
+Затем перемещаем каталог постгреса
+
+```sh
+postgres@ubt-pg-aduron-dbnode1:~$ cd /mnt/data
+postgres@ubt-pg-aduron-dbnode1:/mnt/data$ mkdir postgresql
+postgres@ubt-pg-aduron-dbnode1:/mnt/data$ mv /var/lib/postgresql/18 /mnt/data/postgresql
+postgres@ubt-pg-aduron-dbnode1:/mnt/data$ ls -lrt /mnt/data/postgresql
+total 4
+drwxr-xr-x 3 postgres postgres 4096 Jan  2 14:38 18
+
+postgres@ubt-pg-aduron-dbnode2:~$ cd /mnt/data
+postgres@ubt-pg-aduron-dbnode2:/mnt/data$ mkdir postgresql
+postgres@ubt-pg-aduron-dbnode2:/mnt/data$ mv /var/lib/postgresql/18 /mnt/data/postgresql
+postgres@ubt-pg-aduron-dbnode2:/mnt/data$ ls -lrt /mnt/data/postgresql
+total 4
+drwxr-xr-x 3 postgres postgres 4096 Jan  2 14:38 18
+```
+```sh
+postgres@ubt-pg-aduron-dbnode1:/mnt/data$ cp /etc/postgresql/18/main/postgresql.conf /etc/postgresql/18/main/postgresql.conf.backup
+grep data_directory /etc/postgresql/18/main/postgresql.conf
+
+postgres@ubt-pg-aduron-dbnode1:/mnt/data$ grep data_directory /etc/postgresql/18/main/postgresql.conf
+data_directory = '/var/lib/postgresql/18/main'          # use data in another directory
+postgres@ubt-pg-aduron-dbnode1:/mnt/data$ sed -i 's/\/var\/lib\/postgresql\/18\/main/\/mnt\/data\/postgresql\/18\/main/g' /etc/postgresql/18/main/postgresql.conf
+postgres@ubt-pg-aduron-dbnode1:/mnt/data$ grep data_directory /etc/postgresql/18/main/postgresql.conf
+data_directory = '/mnt/data/postgresql/18/main'         # use data in another directory
+
+postgres@ubt-pg-aduron-dbnode2:/mnt/data$ cp /etc/postgresql/18/main/postgresql.conf /etc/postgresql/18/main/postgresql.conf.backup
+postgres@ubt-pg-aduron-dbnode2:/mnt/data$ grep data_directory /etc/postgresql/18/main/postgresql.conf
+data_directory = '/var/lib/postgresql/18/main'          # use data in another directory
+postgres@ubt-pg-aduron-dbnode2:/mnt/data$ sed -i 's/\/var\/lib\/postgresql\/18\/main/\/mnt\/data\/postgresql\/18\/main/g' /etc/postgresql/18/main/postgresql.conf
+postgres@ubt-pg-aduron-dbnode2:/mnt/data$ grep data_directory /etc/postgresql/18/main/postgresql.conf
+data_directory = '/mnt/data/postgresql/18/main'         # use data in another directory
+
+postgres@ubt-pg-aduron-dbnode1:/mnt/data$ pg_lsclusters
+Ver Cluster Port Status Owner    Data directory               Log file
+18  main    5432 down   postgres /mnt/data/postgresql/18/main /var/log/postgresql/postgresql-18-main.log
+```
+
+#### Установка Patroni
+
+Во первых требуется копирование сертификатов, каоторые были созданны для коммуникации с etcd. Разместим их в /opt/patroni/.tls на каждой ВМ
+```sh
+aduron@ubt-pg-aduron-dbnode1:~$ sudo mkdir -p /opt/patroni/.tls
+[sudo] password for aduron:
+aduron@ubt-pg-aduron-dbnode2:~$ sudo mkdir -p /opt/patroni/.tls
+
+aduron@ubt-pg-aduron-dbnode1:~$ sudo cp /etc/default/etcd/.tls/ubt-pg-aduron-dbnode1.crt /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode1:~$ sudo cp /etc/default/etcd/.tls/ubt-pg-aduron-dbnode1.key /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode1:~$ sudo cp /etc/default/etcd/.tls/ubt-pg-aduron-dbnode2.crt /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode1:~$ sudo cp /etc/default/etcd/.tls/ubt-pg-aduron-dbnode2.key /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode1:~$ sudo cp /etc/default/etcd/.tls/ca.crt /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode1:~$ sudo cp /etc/default/etcd/.tls/ca.key /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode1:~$ sudo chmod -R 744 /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode1:~$ sudo chmod 600 /opt/patroni/.tls/*.key
+aduron@ubt-pg-aduron-dbnode1:~$ sudo ls -lrt /opt/patroni/.tls
+total 24
+-rwxr--r-- 1 postgres postgres 2078 Jan 16 19:09 ubt-pg-aduron-dbnode1.crt
+-rw------- 1 postgres postgres 3272 Jan 16 19:09 ubt-pg-aduron-dbnode1.key
+-rwxr--r-- 1 postgres postgres 2078 Jan 16 19:13 ubt-pg-aduron-dbnode2.crt
+-rw------- 1 postgres postgres 3272 Jan 16 19:13 ubt-pg-aduron-dbnode2.key
+-rwxr--r-- 1 root     root     2045 Jan 16 21:00 ca.crt
+-rw------- 1 root     root     3272 Jan 16 21:00 ca.key
+
+aduron@ubt-pg-aduron-dbnode2:~$ sudo cp /etc/default/etcd/.tls/ubt-pg-aduron-dbnode2.crt /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode2:~$ sudo cp /etc/default/etcd/.tls/ubt-pg-aduron-dbnode2.key /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode2:~$ sudo cp /etc/default/etcd/.tls/ubt-pg-aduron-dbnode1.crt /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode2:~$ sudo cp /etc/default/etcd/.tls/ubt-pg-aduron-dbnode1.key /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode2:~$ sudo chmod -R 744 /opt/patroni/.tls
+aduron@ubt-pg-aduron-dbnode2:~$ sudo chmod 600 /opt/patroni/.tls/*.key
+aduron@ubt-pg-aduron-dbnode2:~$ sudo ls -lrt /opt/patroni/.tls
+total 24
+-rwxr--r-- 1 postgres postgres 2078 Jan 16 19:10 ubt-pg-aduron-dbnode2.crt
+-rw------- 1 postgres postgres 3272 Jan 16 19:10 ubt-pg-aduron-dbnode2.key
+-rwxr--r-- 1 postgres postgres 2078 Jan 16 19:14 ubt-pg-aduron-dbnode1.crt
+-rw------- 1 postgres postgres 3272 Jan 16 19:14 ubt-pg-aduron-dbnode1.key
+-rwxr--r-- 1 root     root     2045 Jan 16 21:01 ca.crt
+-rw------- 1 root     root     3272 Jan 16 21:01 ca.key
+```
+
+Затем надо установить Python (на базе которого создан модуль Patroni). Ubuntu 24.04 уже приходит с версией Python 3.12, однако отсутствует PIP. Мы его установим вот так на каждой ВМ.
+```sh
+aduron@ubt-pg-aduron-dbnode2:~$ which pip
+aduron@ubt-pg-aduron-dbnode2:~$ which pip3
+aduron@ubt-pg-aduron-dbnode2:~$ sudo apt install pip
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+Note, selecting 'python3-pip' instead of 'pip'
+The following packages were automatically installed and are no longer required:
+  dns-root-data dnsmasq-base libbluetooth3 libndp0 libnm0 libteamdctl0 ppp pptp-linux
+Use 'sudo apt autoremove' to remove them.
+The following additional packages will be installed:
+  binutils binutils-common binutils-x86-64-linux-gnu build-essential bzip2 cpp cpp-13 cpp-13-x86-64-linux-gnu cpp-x86-64-linux-gnu dpkg-dev fakeroot g++ g++-13 g++-13-x86-64-linux-gnu g++-x86-64-linux-gnu
+  gcc gcc-13 gcc-13-base gcc-13-x86-64-linux-gnu gcc-x86-64-linux-gnu javascript-common libalgorithm-diff-perl libalgorithm-diff-xs-perl libalgorithm-merge-perl libasan8 libatomic1 libbinutils libcc1-0
+  libctf-nobfd0 libctf0 libdpkg-perl libexpat1-dev libfakeroot libfile-fcntllock-perl libgcc-13-dev libgomp1 libgprofng0 libhwasan0 libisl23 libitm1 libjs-jquery libjs-sphinxdoc libjs-underscore liblsan0
+  libmpc3 libpython3-dev libpython3.12-dev libquadmath0 libsframe1 libstdc++-13-dev libtsan2 libubsan1 lto-disabled-list make python3-dev python3-wheel python3.12-dev zlib1g-dev
+Suggested packages:
+  binutils-doc gprofng-gui bzip2-doc cpp-doc gcc-13-locales cpp-13-doc debian-keyring g++-multilib g++-13-multilib gcc-13-doc gcc-multilib autoconf automake libtool flex bison gdb gcc-doc gcc-13-multilib
+  gdb-x86-64-linux-gnu apache2 | lighttpd | httpd bzr libstdc++-13-doc make-doc
+The following NEW packages will be installed:
+  binutils binutils-common binutils-x86-64-linux-gnu build-essential bzip2 cpp cpp-13 cpp-13-x86-64-linux-gnu cpp-x86-64-linux-gnu dpkg-dev fakeroot g++ g++-13 g++-13-x86-64-linux-gnu g++-x86-64-linux-gnu
+  gcc gcc-13 gcc-13-base gcc-13-x86-64-linux-gnu gcc-x86-64-linux-gnu javascript-common libalgorithm-diff-perl libalgorithm-diff-xs-perl libalgorithm-merge-perl libasan8 libatomic1 libbinutils libcc1-0
+  libctf-nobfd0 libctf0 libdpkg-perl libexpat1-dev libfakeroot libfile-fc
+  ...
+  
+aduron@ubt-pg-aduron-dbnode2:~$ pip3 -V
+pip 24.0 from /usr/lib/python3/dist-packages/pip (python 3.12)
+```
+
+Очень желательно установить Patroni в виртуальной среде, что позволит выстро разварачивать новую среду, не трогая основной системы.
+```sh
+aduron@ubt-pg-aduron-dbnode1:~$ sudo apt install python3.12-venv
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following packages were automatically installed and are no longer required:
+  dns-root-data dnsmasq-base libbluetooth3 libndp0 libnm0 libteamdctl0 ppp pptp-linux
+Use 'sudo apt autoremove' to remove them.
+The following additional packages will be installed:
+  python3-pip-whl python3-setuptools-whl
+The following NEW packages will be installed:
+  python3-pip-whl python3-setuptools-whl python3.12-venv
+0 upgraded, 3 newly installed, 0 to remove and 2 not upgraded.
+Need to get 2,429 kB of archives.
+After this operation, 2,777 kB of additional disk space will be used.
+Do you want to continue? [Y/n] y
+Get:1 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 python3-pip-whl all 24.0+dfsg-1ubuntu1.3 [1,707 kB]
+Get:2 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 python3-setuptools-whl all 68.1.2-2ubuntu1.2 [716 kB]
+Get:3 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 python3.12-venv amd64 3.12.3-1ubuntu0.10 [5,678 B]
+Fetched 2,429 kB in 3s (949 kB/s)
+Selecting previously unselected package python3-pip-whl.
+(Reading database ... 93661 files and directories currently installed.)
+Preparing to unpack .../python3-pip-whl_24.0+dfsg-1ubuntu1.3_all.deb ...
+Unpacking python3-pip-whl (24.0+dfsg-1ubuntu1.3) ...
+Selecting previously unselected package python3-setuptools-whl.
+Preparing to unpack .../python3-setuptools-whl_68.1.2-2ubuntu1.2_all.deb ...
+Unpacking python3-setuptools-whl (68.1.2-2ubuntu1.2) ...
+Selecting previously unselected package python3.12-venv.
+Preparing to unpack .../python3.12-venv_3.12.3-1ubuntu0.10_amd64.deb ...
+Unpacking python3.12-venv (3.12.3-1ubuntu0.10) ...
+Setting up python3-setuptools-whl (68.1.2-2ubuntu1.2) ...
+Setting up python3-pip-whl (24.0+dfsg-1ubuntu1.3) ...
+Setting up python3.12-venv (3.12.3-1ubuntu0.10) ...
+Scanning processes...
+Scanning candidates...
+Scanning linux images...
+
+Running kernel seems to be up-to-date.
+
+Restarting services...
+
+Service restarts being deferred:
+ systemctl restart unattended-upgrades.service
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+```
+
+Создание виртуальной среды
+```sh
+aduron@ubt-pg-aduron-dbnode1:~$ sudo python3 -m venv /opt/patroni
+aduron@ubt-pg-aduron-dbnode2:~$ sudo python3 -m venv /opt/patroni
+
+(patroni) aduron@ubt-pg-aduron-dbnode1:/opt/patroni/packages$ sudo chown -R postgres:postgres /opt/patroni
+(patroni) aduron@ubt-pg-aduron-dbnode1:/opt/patroni/packages$ sudo su - postgres
+postgres@ubt-pg-aduron-dbnode1:~$ source /opt/patroni/bin/activate
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$
+
+(patroni) aduron@ubt-pg-aduron-dbnode2:/opt/patroni/packages$ sudo chown -R postgres:postgres /opt/patroni
+(patroni) aduron@ubt-pg-aduron-dbnode2:/opt/patroni/packages$ sudo su - postgres
+postgres@ubt-pg-aduron-dbnode2:~$ source /opt/patroni/bin/activate
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$
+```
+
+> [!CAUTION]
+> В неких примерах встречается устоновку разных пакетов (python3-psycopg2...) однако на [официальном сайте Патрони](https://patroni.readthedocs.io/en/latest/installation.html), видно что можно установить одновременно все нужные модули следуюшим образом: `pip install patroni[psycopg3,etcd3]`.
+
+```sh 
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ which pip
+/opt/patroni/bin/pip
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ pip install patroni[psycopg3,etcd3]
+Collecting patroni[etcd3,psycopg3]
+  Downloading patroni-4.1.0-py3-none-any.whl.metadata (12 kB)
+Collecting urllib3!=1.21,>=1.19.1 (from patroni[etcd3,psycopg3])
+  Downloading urllib3-2.6.3-py3-none-any.whl.metadata (6.9 kB)
+Collecting PyYAML (from patroni[etcd3,psycopg3])
+  Downloading pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+Collecting py-consul>=1.1.1 (from patroni[etcd3,psycopg3])
+  Downloading py_consul-1.7.1-py2.py3-none-any.whl.metadata (6.5 kB)
+Collecting click>=5.0 (from patroni[etcd3,psycopg3])
+  Downloading click-8.3.1-py3-none-any.whl.metadata (2.6 kB)
+Collecting prettytable>=0.7 (from patroni[etcd3,psycopg3])
+  Downloading prettytable-3.17.0-py3-none-any.whl.metadata (34 kB)
+Collecting python-dateutil (from patroni[etcd3,psycopg3])
+  Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Collecting psutil>=2.0.0 (from patroni[etcd3,psycopg3])
+  Downloading psutil-7.2.1-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl.metadata (22 kB)
+Collecting ydiff!=1.4.0,!=1.4.1,<1.5,>=1.2.0 (from patroni[etcd3,psycopg3])
+  Downloading ydiff-1.4.2.tar.gz (16 kB)
+  Installing build dependencies ... done
+  Getting requirements to build wheel ... done
+  Preparing metadata (pyproject.toml) ... done
+Collecting python-etcd<0.5,>=0.4.3 (from patroni[etcd3,psycopg3])
+  Downloading python-etcd-0.4.5.tar.gz (37 kB)
+  Installing build dependencies ... done
+  Getting requirements to build wheel ... done
+  Preparing metadata (pyproject.toml) ... done
+Collecting psycopg>=3.0.0 (from psycopg[binary]>=3.0.0; extra == "psycopg3"->patroni[etcd3,psycopg3])
+  Downloading psycopg-3.3.2-py3-none-any.whl.metadata (4.3 kB)
+Collecting wcwidth (from prettytable>=0.7->patroni[etcd3,psycopg3])
+  Downloading wcwidth-0.2.14-py2.py3-none-any.whl.metadata (15 kB)
+Collecting typing-extensions>=4.6 (from psycopg>=3.0.0->psycopg[binary]>=3.0.0; extra == "psycopg3"->patroni[etcd3,psycopg3])
+  Downloading typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting psycopg-binary==3.3.2 (from psycopg[binary]>=3.0.0; extra == "psycopg3"->patroni[etcd3,psycopg3])
+  Downloading psycopg_binary-3.3.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.7 kB)
+Collecting requests>=2.0 (from py-consul>=1.1.1->patroni[etcd3,psycopg3])
+  Downloading requests-2.32.5-py3-none-any.whl.metadata (4.9 kB)
+Collecting dnspython>=1.13.0 (from python-etcd<0.5,>=0.4.3->patroni[etcd3,psycopg3])
+  Downloading dnspython-2.8.0-py3-none-any.whl.metadata (5.7 kB)
+Collecting six>=1.5 (from python-dateutil->patroni[etcd3,psycopg3])
+  Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Collecting charset_normalizer<4,>=2 (from requests>=2.0->py-consul>=1.1.1->patroni[etcd3,psycopg3])
+  Downloading charset_normalizer-3.4.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (37 kB)
+Collecting idna<4,>=2.5 (from requests>=2.0->py-consul>=1.1.1->patroni[etcd3,psycopg3])
+  Downloading idna-3.11-py3-none-any.whl.metadata (8.4 kB)
+Collecting certifi>=2017.4.17 (from requests>=2.0->py-consul>=1.1.1->patroni[etcd3,psycopg3])
+  Downloading certifi-2026.1.4-py3-none-any.whl.metadata (2.5 kB)
+Downloading click-8.3.1-py3-none-any.whl (108 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 108.3/108.3 kB 1.1 MB/s eta 0:00:00
+Downloading prettytable-3.17.0-py3-none-any.whl (34 kB)
+Downloading psutil-7.2.1-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl (154 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 154.7/154.7 kB 2.0 MB/s eta 0:00:00
+Downloading psycopg-3.3.2-py3-none-any.whl (212 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 212.8/212.8 kB 2.7 MB/s eta 0:00:00
+Downloading psycopg_binary-3.3.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (5.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.1/5.1 MB 14.2 MB/s eta 0:00:00
+Downloading py_consul-1.7.1-py2.py3-none-any.whl (38 kB)
+Downloading urllib3-2.6.3-py3-none-any.whl (131 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 131.6/131.6 kB 4.4 MB/s eta 0:00:00
+Downloading patroni-4.1.0-py3-none-any.whl (372 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 373.0/373.0 kB 13.8 MB/s eta 0:00:00
+Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 229.9/229.9 kB 9.0 MB/s eta 0:00:00
+Downloading pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (807 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 807.9/807.9 kB 14.6 MB/s eta 0:00:00
+Downloading dnspython-2.8.0-py3-none-any.whl (331 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 331.1/331.1 kB 15.1 MB/s eta 0:00:00
+Downloading requests-2.32.5-py3-none-any.whl (64 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64.7/64.7 kB 4.2 MB/s eta 0:00:00
+Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+Downloading typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 44.6/44.6 kB 3.0 MB/s eta 0:00:00
+Downloading wcwidth-0.2.14-py2.py3-none-any.whl (37 kB)
+Downloading certifi-2026.1.4-py3-none-any.whl (152 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 152.9/152.9 kB 5.1 MB/s eta 0:00:00
+Downloading charset_normalizer-3.4.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (153 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 153.5/153.5 kB 10.4 MB/s eta 0:00:00
+Downloading idna-3.11-py3-none-any.whl (71 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 71.0/71.0 kB 7.1 MB/s eta 0:00:00
+Building wheels for collected packages: python-etcd, ydiff
+  Building wheel for python-etcd (pyproject.toml) ... done
+  Created wheel for python-etcd: filename=python_etcd-0.4.5-py3-none-any.whl size=38534 sha256=d06b54348f9269da1b64e1e6a8aacd4e5a72cc1905951cd2bb9535b4e591a76e
+  Stored in directory: /var/lib/postgresql/.cache/pip/wheels/4e/39/67/0e2eeecadaa1efd2710965303e5eff653dd660a24bdcbfb88f
+  Building wheel for ydiff (pyproject.toml) ... done
+  Created wheel for ydiff: filename=ydiff-1.4.2-py3-none-any.whl size=16306 sha256=3ad808da99f58796ab02292dc3fbd5bfddf1a601d3ff26dc3e7b53e88d1c17a9
+  Stored in directory: /var/lib/postgresql/.cache/pip/wheels/00/23/0d/b65d57876592e23aeee7fc7e4e8384f3dff041f3ba208a9cec
+Successfully built python-etcd ydiff
+Installing collected packages: ydiff, wcwidth, urllib3, typing-extensions, six, PyYAML, psycopg-binary, psutil, idna, dnspython, click, charset_normalizer, certifi, requests, python-etcd, python-dateutil, psycopg, prettytable, py-consul, patroni
+Successfully installed PyYAML-6.0.3 certifi-2026.1.4 charset_normalizer-3.4.4 click-8.3.1 dnspython-2.8.0 idna-3.11 patroni-4.1.0 prettytable-3.17.0 psutil-7.2.1 psycopg-3.3.2 psycopg-binary-3.3.2 py-consul-1.7.1 python-dateutil-2.9.0.post0 python-etcd-0.4.5 requests-2.32.5 six-1.17.0 typing-extensions-4.15.0 urllib3-2.6.3 wcwidth-0.2.14 ydiff-1.4.2
+
+
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ which pip
+/opt/patroni/bin/pip
+(patroni) postgres@ubt-pg-aduron-dbnode2:/opt/patroni$ pip install patroni[psycopg3,etcd3]
+Collecting patroni[etcd3,psycopg3]
+  Downloading patroni-4.1.0-py3-none-any.whl.metadata (12 kB)
+Collecting urllib3!=1.21,>=1.19.1 (from patroni[etcd3,psycopg3])
+  Downloading urllib3-2.6.3-py3-none-any.whl.metadata (6.9 kB)
+Collecting PyYAML (from patroni[etcd3,psycopg3])
+  Downloading pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+Collecting py-consul>=1.1.1 (from patroni[etcd3,psycopg3])
+  Downloading py_consul-1.7.1-py2.py3-none-any.whl.metadata (6.5 kB)
+Collecting click>=5.0 (from patroni[etcd3,psycopg3])
+  Downloading click-8.3.1-py3-none-any.whl.metadata (2.6 kB)
+Collecting prettytable>=0.7 (from patroni[etcd3,psycopg3])
+  Downloading prettytable-3.17.0-py3-none-any.whl.metadata (34 kB)
+Collecting python-dateutil (from patroni[etcd3,psycopg3])
+  Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Collecting psutil>=2.0.0 (from patroni[etcd3,psycopg3])
+  Downloading psutil-7.2.1-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl.metadata (22 kB)
+Collecting ydiff!=1.4.0,!=1.4.1,<1.5,>=1.2.0 (from patroni[etcd3,psycopg3])
+  Downloading ydiff-1.4.2.tar.gz (16 kB)
+  Installing build dependencies ... done
+  Getting requirements to build wheel ... done
+  Preparing metadata (pyproject.toml) ... done
+Collecting python-etcd<0.5,>=0.4.3 (from patroni[etcd3,psycopg3])
+  Downloading python-etcd-0.4.5.tar.gz (37 kB)
+  Installing build dependencies ... done
+  Getting requirements to build wheel ... done
+  Preparing metadata (pyproject.toml) ... done
+Collecting psycopg>=3.0.0 (from psycopg[binary]>=3.0.0; extra == "psycopg3"->patroni[etcd3,psycopg3])
+  Downloading psycopg-3.3.2-py3-none-any.whl.metadata (4.3 kB)
+Collecting wcwidth (from prettytable>=0.7->patroni[etcd3,psycopg3])
+  Downloading wcwidth-0.2.14-py2.py3-none-any.whl.metadata (15 kB)
+Collecting typing-extensions>=4.6 (from psycopg>=3.0.0->psycopg[binary]>=3.0.0; extra == "psycopg3"->patroni[etcd3,psycopg3])
+  Downloading typing_extensions-4.15.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting psycopg-binary==3.3.2 (from psycopg[binary]>=3.0.0; extra == "psycopg3"->patroni[etcd3,psycopg3])
+  Downloading psycopg_binary-3.3.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.7 kB)
+Collecting requests>=2.0 (from py-consul>=1.1.1->patroni[etcd3,psycopg3])
+  Downloading requests-2.32.5-py3-none-any.whl.metadata (4.9 kB)
+Collecting dnspython>=1.13.0 (from python-etcd<0.5,>=0.4.3->patroni[etcd3,psycopg3])
+  Downloading dnspython-2.8.0-py3-none-any.whl.metadata (5.7 kB)
+Collecting six>=1.5 (from python-dateutil->patroni[etcd3,psycopg3])
+  Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Collecting charset_normalizer<4,>=2 (from requests>=2.0->py-consul>=1.1.1->patroni[etcd3,psycopg3])
+  Downloading charset_normalizer-3.4.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (37 kB)
+Collecting idna<4,>=2.5 (from requests>=2.0->py-consul>=1.1.1->patroni[etcd3,psycopg3])
+  Downloading idna-3.11-py3-none-any.whl.metadata (8.4 kB)
+Collecting certifi>=2017.4.17 (from requests>=2.0->py-consul>=1.1.1->patroni[etcd3,psycopg3])
+  Downloading certifi-2026.1.4-py3-none-any.whl.metadata (2.5 kB)
+Downloading click-8.3.1-py3-none-any.whl (108 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 108.3/108.3 kB 1.5 MB/s eta 0:00:00
+Downloading prettytable-3.17.0-py3-none-any.whl (34 kB)
+Downloading psutil-7.2.1-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl (154 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 154.7/154.7 kB 2.5 MB/s eta 0:00:00
+Downloading psycopg-3.3.2-py3-none-any.whl (212 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 212.8/212.8 kB 4.9 MB/s eta 0:00:00
+Downloading psycopg_binary-3.3.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (5.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 5.1/5.1 MB 16.4 MB/s eta 0:00:00
+Downloading py_consul-1.7.1-py2.py3-none-any.whl (38 kB)
+Downloading urllib3-2.6.3-py3-none-any.whl (131 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 131.6/131.6 kB 4.5 MB/s eta 0:00:00
+Downloading patroni-4.1.0-py3-none-any.whl (372 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 373.0/373.0 kB 10.2 MB/s eta 0:00:00
+Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 229.9/229.9 kB 7.2 MB/s eta 0:00:00
+Downloading pyyaml-6.0.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (807 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 807.9/807.9 kB 22.8 MB/s eta 0:00:00
+Downloading dnspython-2.8.0-py3-none-any.whl (331 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 331.1/331.1 kB 31.2 MB/s eta 0:00:00
+Downloading requests-2.32.5-py3-none-any.whl (64 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 64.7/64.7 kB 5.3 MB/s eta 0:00:00
+Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+Downloading typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 44.6/44.6 kB 4.1 MB/s eta 0:00:00
+Downloading wcwidth-0.2.14-py2.py3-none-any.whl (37 kB)
+Downloading certifi-2026.1.4-py3-none-any.whl (152 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 152.9/152.9 kB 11.4 MB/s eta 0:00:00
+Downloading charset_normalizer-3.4.4-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (153 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 153.5/153.5 kB 16.5 MB/s eta 0:00:00
+Downloading idna-3.11-py3-none-any.whl (71 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 71.0/71.0 kB 2.9 MB/s eta 0:00:00
+Building wheels for collected packages: python-etcd, ydiff
+  Building wheel for python-etcd (pyproject.toml) ... done
+  Created wheel for python-etcd: filename=python_etcd-0.4.5-py3-none-any.whl size=38534 sha256=7bd9b31abd142a8ddab548cc983b4e24e83567b988901c36016a5483e4a41a32
+  Stored in directory: /var/lib/postgresql/.cache/pip/wheels/4e/39/67/0e2eeecadaa1efd2710965303e5eff653dd660a24bdcbfb88f
+  Building wheel for ydiff (pyproject.toml) ... done
+  Created wheel for ydiff: filename=ydiff-1.4.2-py3-none-any.whl size=16306 sha256=97d98eb95db85adbc47d60e4b48c9589bfd522adabf8e138598b133a6e25f598
+  Stored in directory: /var/lib/postgresql/.cache/pip/wheels/00/23/0d/b65d57876592e23aeee7fc7e4e8384f3dff041f3ba208a9cec
+Successfully built python-etcd ydiff
+Installing collected packages: ydiff, wcwidth, urllib3, typing-extensions, six, PyYAML, psycopg-binary, psutil, idna, dnspython, click, charset_normalizer, certifi, requests, python-etcd, python-dateutil, psycopg, prettytable, py-consul, patroni
+Successfully installed PyYAML-6.0.3 certifi-2026.1.4 charset_normalizer-3.4.4 click-8.3.1 dnspython-2.8.0 idna-3.11 patroni-4.1.0 prettytable-3.17.0 psutil-7.2.1 psycopg-3.3.2 psycopg-binary-3.3.2 py-consul-1.7.1 python-dateutil-2.9.0.post0 python-etcd-0.4.5 requests-2.32.5 six-1.17.0 typing-extensions-4.15.0 urllib3-2.6.3 wcwidth-0.2.14 ydiff-1.4.2
+```
+
+#### Создание конфигурации
+
+> [!TIP]
+> С помощью `patroni --generate-config` можно создать файл настроек Patroni, однако трубуется ременно запустить кластер.
+
+На каждом ноде, создаваем папку `/etc/patroni`
+```sh
+aduron@ubt-pg-aduron-dbnode2:~$ sudo mkdir /etc/patroni
+[sudo] password for aduron:
+aduron@ubt-pg-aduron-dbnode2:~$ sudo chown postgres:postgres /etc/patroni
+```
+Запускаем `patroni --generate-config` и скопируем результат с */etc/patroni/config.yml*
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patroni --generate-config 
+Please enter the user password:
+```
+
+Здесь описано, какие параметры были добавлены, в целом это касается:
+- Название кластера
+- Местоположение логфайлов и их настройки
+- сертификаты управления DCS (для взаймодействия с etcd)
+- Кастройки репликации
+- use_pg_rewind
+- Настройки файла pg_hba
+- Учетки для репликации и т.д.
+- config_file / hba_file (это ошибка)
+
+```sh
+scope: 18/main
+name: ubt-pg-aduron-dbnode1           # Изменить на 2 ноде
+
+log:
+  format: '%(asctime)s %(levelname)s: %(message)s'
+  level: INFO
+  max_queue_size: 1000
+  traceback_level: ERROR
+  type: plain
+  dir: /mnt/data/log/patroni          # Добавлен
+  file_size: 50000000                 # Добавлен
+  file_num: 10                        # Добавлен
+
+restapi:
+  connect_address: 192.168.56.10:8008 # Изменить на 2 ноде
+  listen: 192.168.56.10:8008          # Изменить на 2 ноде
+  verify_client: optional             # Добавлен
+  cafile: /opt/patroni/.tls/ca.crt    # Добавлен
+  certfile: /opt/patroni/.tls/ubt-pg-aduron-dbnode1.crt # Изменить сертификаты на 2 ноде
+  keyfile: /opt/patroni/.tls/ubt-pg-aduron-dbnode1.key  # Изменить ключ на 2 ноде
+ctl:
+  cacert: /opt/patroni/.tls/ca.crt    # Изменить сертификаты на 2 ноде
+  certfile: /opt/patroni/.tls/ubt-pg-aduron-dbnode1.crt
+  keyfile: /opt/patroni/.tls/ubt-pg-aduron-dbnode1.key
+etcd3:
+  hosts: ["ubt-pg-aduron-etcd1:2379", "ubt-pg-aduron-etcd2:2379", "ubt-pg-aduron-etcd3:2379"]
+  protocol: https
+  cacert: /opt/patroni/.tls/ca.crt
+  cert: /opt/patroni/.tls/ubt-pg-aduron-dbnode1.crt # Изменить сертификаты на 2 ноде
+  key: /opt/patroni/.tls/ubt-pg-aduron-dbnode1.key  # Изменить ключ на 2 ноде
+watchdog:
+  mode: off
+  
+# The bootstrap configuration. Works only when the cluster is not yet initialized.
+# If the cluster is already initialized, all changes in the `bootstrap` section are ignored!
+bootstrap:
+  # This section will be written into <dcs>:/<namespace>/<scope>/config after initializing
+  # new cluster and all other cluster members will use it as a `global configuration`.
+  # WARNING! If you want to change any of the parameters that were set up
+  # via `bootstrap.dcs` section, please use `patronictl edit-config`!
+  dcs:
+    failsafe_mode: true               # Добавлен
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576  # Добавлен
+    synchronous_mode: true            # Добавлен
+    synchronous_mode_strict: true     # Добавлен
+    synchronous_mode_count: 1         # Добавлен
+    master_start_timeout: 30          # Добавлен
+    slots:
+      prod_replica1:
+        type: physical                # Добавлен
+    postgresql:
+      parameters:
+        DateStyle: ISO, MDY
+        TimeZone: Etc/UTC
+        autovacuum_worker_slots: '16'
+        default_text_search_config: pg_catalog.english
+        dynamic_shared_memory_type: posix
+        external_pid_file: /var/run/postgresql/18-main.pid
+        hot_standby: 'on'
+        lc_messages: en_US.UTF-8
+        lc_monetary: en_US.UTF-8
+        lc_numeric: en_US.UTF-8
+        lc_time: en_US.UTF-8
+        log_line_prefix: '%m [%p] %q%u@%d '
+        log_timezone: Etc/UTC
+        max_connections: '100'
+        max_locks_per_transaction: '64'
+        max_prepared_transactions: '0'
+        max_replication_slots: '10'
+        max_wal_senders: '10'
+        max_wal_size: 1GB
+        max_worker_processes: '8'
+        min_wal_size: 80MB
+        shared_buffers: 128MB
+        ssl: 'on'
+        ssl_cert_file: /etc/ssl/certs/ssl-cert-snakeoil.pem
+        ssl_key_file: /etc/ssl/private/ssl-cert-snakeoil.key
+        track_commit_timestamp: 'off'
+        unix_socket_directories: /var/run/postgresql
+        wal_keep_size: '0'
+        wal_level: replica
+        wal_log_hints: 'off'
+      use_slots: true
+      use_pg_rewind: true             # Добавлен
+  pg_hba:
+    - local all all peer
+    - host all all 127.0.0.1/32 scram-sha-256
+    - host all all 0.0.0.0/0 md5
+    - host replication replicator 127.0.0.1/32 scram-sha-256        # Добавлен
+    - host replication replicator 192.168.56.0/24 scram-sha-256     # Добавлен
+  initdb: ["encoding=UTF8", "data-checksums", "username=postgres", "auth=scram-sha-256"]
+  users:
+    aduron:                           # Добавлен
+      password: OracleDBA123
+      options: ["createdb"]
+	  
+postgresql:                           # Добавлен
+  authentication:
+    replication:                      # Добавлен (Учетка для репликации)
+      password: Replication123
+      username: replicator
+    superuser:                        # Добавлен (Учетка superuser)
+      password: Oracle123
+      username: postgres
+  bin_dir: /usr/lib/postgresql/18/bin
+  connect_address: 192.168.56.10:5432 # Изменить на 2 ноде
+  data_dir: /mnt/data/postgresql/18/main
+  listen: localhost:5432              # Добавлен
+  parameters:
+    config_file: /etc/postgresql/18/main/postgresql.conf    # Добавлен
+    hba_file: /etc/postgresql/18/main/pg_hba.conf           # Добавлен
+    ident_file: /etc/postgresql/18/main/pg_ident.conf       # Добавлен
+  create_replica_methods: ["basebackup"]
+  basebackup:
+    max-rate: 100M
+    checkpoint: fast
+
+tags:
+  clonefrom: true
+  failover_priority: 1
+  noloadbalance: false
+  nostream: false
+  nosync: false                 # Удалим после validate
+  sync_priority: 1(patroni) 
+```
+
+Создадим папку для логирования
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ mkdir -p /mnt/data/log/patroni
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ mkdir -p /mnt/data/log/patroni
+```
+
+> [!TIP]
+> Проверить файл можно с помощью `patroni --validate-config /etc/patroni/config.yml`. В данном случае, это показывает что нам нужно
+> - отключить сервис `postgresql` которого мы запустили для создании файла
+> - выбрать между вариантами ('nosync', 'sync_priority')
+
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patroni --validate-config /etc/patroni/config.yml
+postgresql.listen localhost:5432 didn't pass validation: Port 5432 is already in use.
+tags  Multiple of ('nosync', 'sync_priority') provided
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ systemctl stop postgresql@18-main
+==== AUTHENTICATING FOR org.freedesktop.systemd1.manage-units ====
+Authentication is required to stop 'postgresql@18-main.service'.
+Authenticating as: Alain Duron (aduron)
+Password:
+==== AUTHENTICATION COMPLETE ====
+
+# Удалим nosync
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ vi /etc/patroni/config.yml
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patroni --validate-config /etc/patroni/config.yml
+```
+
+
+#### Создание службы Patroni
+
+Для автоматичново запуска вместо Postgresql, требуется создание нового сервиса Patroni который запустит сам постгрес. С этой целью создадим (на каждом ноде) следующий *unit-file*
+```sh
+aduron@ubt-pg-aduron-dbnode2:~$ sudo su - root
+[sudo] password for aduron:
+root@ubt-pg-aduron-dbnode2:~# vi /etc/systemd/system/patroni.service
+root@ubt-pg-aduron-dbnode2:~# cat /etc/systemd/system/patroni.service
+[Unit]
+Description=Patroni high-availability PostgreSQL
+After=network.target
+
+[Service]
+User=postgres
+Type=simple
+ExecStart=/opt/patroni/bin/patroni /etc/patroni/config.yml
+Restart=always
+RestartSec=5
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target
+
+root@ubt-pg-aduron-dbnode2:~# sudo systemctl daemon-reload
+root@ubt-pg-aduron-dbnode2:~# sudo systemctl enable patroni
+Created symlink /etc/systemd/system/multi-user.target.wants/patroni.service → /etc/systemd/system/patroni.service.
+```
+
+
+#### Запуск Patroni
+
+Запускаем службу Patroni 
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ systemctl start patroni
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ systemctl start patroni
+```
+
+И сразу в логе встечаем следуючее, бесконечно повторяющееся сообшение:
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ cat /mnt/data/log/patroni/patroni.log
+2026-01-16 21:48:01,737 ERROR: Failed to get list of machines from https://ubt-pg-aduron-etcd1:2379/v3: <Unknown error: '404 page not found', code: 2>
+2026-01-16 21:48:01,767 ERROR: Failed to get list of machines from https://ubt-pg-aduron-etcd2:2379/v3: <Unknown error: '404 page not found', code: 2>
+2026-01-16 21:48:01,796 ERROR: Failed to get list of machines from https://ubt-pg-aduron-etcd3:2379/v3: <Unknown error: '404 page not found', code: 2>
+2026-01-16 21:48:01,796 INFO: waiting on etcd
+2026-01-16 21:48:06,873 ERROR: Failed to get list of machines from https://ubt-pg-aduron-etcd1:2379/v3: <Unknown error: '404 page not found', code: 2>
+2026-01-16 21:48:06,915 ERROR: Failed to get list of machines from https://ubt-pg-aduron-etcd2:2379/v3: <Unknown error: '404 page not found', code: 2>
+2026-01-16 21:48:06,943 ERROR: Failed to get list of machines from https://ubt-pg-aduron-etcd3:2379/v3: <Unknown error: '404 page not found', code: 2>
+2026-01-16 21:48:06,944 INFO: waiting on etcd
+```
+
+После некоторого времени посика, причину обнаружил [здесь](https://github.com/patroni/patroni/issues/1939?ysclid=mkhyncy9h3169799328) и [здесь](https://github.com/etcd-io/etcd/issues/12093).
+Для взаймодействия между etcd и Patroni необходимо включить `enable-grpc-gateway: true` в etcd, иначе API-V3 может остаться недоступным. На наждом ноде В */etc/default/etcd/ubt-pg-aduron-etcdX.conf.yml* добавим:
+
+```sh
+enable-grpc-gateway: true
+```
+
+После этого перезапускаем службу *etcd*. И сразу в логах Patroni появляются новые сообшение касательно постгреса. Прогресс есть.
+```sh
+2026-01-17 06:44:11,826 ERROR: Failed to get list of machines from https://ubt-pg-aduron-etcd1:2379/v3: <Unknown error: '404 page not found', code: 2>
+2026-01-17 06:44:11,827 INFO: waiting on etcd
+2026-01-17 07:23:08,827 INFO: Selected new etcd server https://ubt-pg-aduron-etcd3:2379
+2026-01-17 07:23:08,880 WARNING: postgresql parameter wal_keep_size=0 failed validation, defaulting to 128MB
+2026-01-17 07:23:08,881 INFO: No PostgreSQL configuration items changed, nothing to reload.
+2026-01-17 07:23:08,902 INFO: establishing a new patroni heartbeat connection to postgres
+2026-01-17 07:23:09,218 INFO: establishing a new patroni heartbeat connection to postgres
+2026-01-17 07:23:10,173 INFO: establishing a new patroni heartbeat connection to postgres
+2026-01-17 07:23:11,204 INFO: establishing a new patroni heartbeat connection to postgres
+2026-01-17 07:23:12,213 INFO: establishing a new patroni heartbeat connection to postgres
+2026-01-17 07:23:12,236 WARNING: Retry got exception: connection problems
+```
+
+#### Решение проблем интеграции Постгреса в Patroni
+
+В этом разделе описан ряд проблем с их решениями. Они могут случиться в любом порядке, в зависимости от настроек постргеса, patroni, ВМ и т.д.
+
+##### FileNotFoundError: [Errno 2] (postgresql.conf)
+
+```sh
+2026-01-17 07:26:17,662 ERROR: Exception during execution of long running task restarting after failure
+Traceback (most recent call last):
+  File "/opt/patroni/lib/python3.12/site-packages/patroni/async_executor.py", line 166, in run
+    wakeup = func(*args) if args else func()
+             ^^^^^^^^^^^
+  File "/opt/patroni/lib/python3.12/site-packages/patroni/postgresql/__init__.py", line 1175, in follow
+    ret = self.start(timeout=timeout, block_callbacks=change_role, role=role) or None
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/patroni/lib/python3.12/site-packages/patroni/postgresql/__init__.py", line 778, in start
+    self.config.write_postgresql_conf(configuration)
+  File "/opt/patroni/lib/python3.12/site-packages/patroni/postgresql/config.py", line 544, in write_postgresql_conf
+    os.rename(self._postgresql_conf, self._postgresql_base_conf)
+FileNotFoundError: [Errno 2] No such file or directory: '/mnt/data/postgresql/18/main/postgresql.conf' -> '/mnt/data/postgresql/18/main/postgresql.base.conf'
+```
+
+Как описано в [документации](https://patroni.readthedocs.io/en/latest/patroni_configuration.html), при запуске Patroni ишет файлы настроек в определенном порядке. 
+
+> [!TIP]
+> Достаточно создать файл таким образом:
+> `touch /mnt/data/postgresql/18/main/postgresql.conf`
+
+После создания, Конфигурация переливается в этот файл и постгрес запускается
+
+```sh
+2026-01-17 07:36:40,930 INFO: Lock owner: None; I am ubt-pg-aduron-dbnode2
+2026-01-17 07:36:40,930 INFO: starting as a secondary
+2026-01-17 07:36:41,493 INFO: postmaster pid=35693
+2026-01-17 07:36:41,536 INFO: establishing a new patroni heartbeat connection to postgres
+```
+
+##### INFO: Error communicating with PostgreSQL. Will try again later / WARNING: Failed to determine PostgreSQL state from the connection
+
+Patroni не может подключиться к Постгресу
+```sh
+2026-01-17 07:55:29,851 INFO: Error communicating with PostgreSQL. Will try again later
+2026-01-17 07:55:38,949 INFO: establishing a new patroni heartbeat connection to postgres
+2026-01-17 07:55:39,723 INFO: establishing a new patroni heartbeat connection to postgres
+2026-01-17 07:55:39,756 WARNING: Retry got exception: connection problems
+2026-01-17 07:55:39,771 WARNING: Failed to determine PostgreSQL state from the connection, falling back to cached role
+```
+Также бывает, что невозможно подключиться с паролем:
+```sh
+2026-01-17 07:52:19.572 UTC [36518] postgres@postgres FATAL:  password authentication failed for user "postgres"
+2026-01-17 07:52:19.572 UTC [36518] postgres@postgres DETAIL:  User "postgres" has no password assigned.
+        Connection matched file "/etc/postgresql/18/main/pg_hba.conf" line 125: "host    all             all             127.0.0.1/32            scram-sha-256"
+```
+
+> [!TIP]
+> Здесь необходимо проверить, что учетки, описаны в конфиге, существуют с верными паролями
+
+```sh
+postgres=# alter user postgres password 'Oracle123';
+ALTER ROLE
+postgres=# create user replicator password 'Replication123';
+CREATE ROLE
+postgres=# alter user replicator replication;
+ALTER ROLE
+postgres=# create user aduron password 'OracleDBA123' Superuser createdb;
+CREATE ROLE
+postgres=# \du
+                              List of roles
+ Role name  |                         Attributes
+------------+------------------------------------------------------------
+ aduron     | Superuser, Create DB
+ postgres   | Superuser, Create role, Create DB, Replication, Bypass RLS
+ replicator | Replication
+```
+
+##### Проблемы с файлом pg_hba.conf
+
+Вспомним, что мы указали следущий раздел 
+```sh
+  parameters:
+    config_file: /etc/postgresql/18/main/postgresql.conf    # Добавлен
+    hba_file: /etc/postgresql/18/main/pg_hba.conf           # Добавлен
+    ident_file: /etc/postgresql/18/main/pg_ident.conf       # Добавлен
+```
+Однако при попытке изменить, напимер `/etc/postgresql/18/main/pg_hba.conf`, постгрес не принимает эти изменения. Например, добавляем:
+```
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml edit-config
+---
++++
+@@ -45,7 +45,6 @@
+   - host all postgres 192.168.56.10/24 scram-sha-256
+   - host replication replicator 192.168.56.20/24 scram-sha-256
+   - host all postgres 192.168.56.20/24 scram-sha-256
+-  - host all all 192.168.47.10/24 scram-sha-256
++  - host replication replicator 192.168.56.10/24 scram-sha-256
++  - host all postgres 192.168.56.10/24 scram-sha-256
++  - host replication replicator 192.168.56.20/24 scram-sha-256
++  - host all postgres 192.168.56.20/24 scram-sha-256
+  initdb: ["encoding=UTF8", "data-checksums", "username=postgres", "auth=scram-sha-256"]
+```
+
+> [!TIP]
+> В связи с тем, что указали значение *hba_file*, Patroni игнорирует дунамическую конфигурацию в разделе *pg_hba*
+> Здесь удалил польностю настройки `config_file`,`hba_file`,`ident_file` чтобы patroni использовал применял только дунамическую конфигурацию.
+
+
+##### Применение listen_adresses
+
+Наверняка настройка, на которой я потратил найбольще времени. Дела в том, что изменить ее можно, например, следующим способом
+
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patronictl -c /etc/patroni/config.yml edit-config 18/main --set listen_addresses="localhost,192.168.56.20,192.168.56.10,192.168.56.30" --force
+---
++++
+@@ -1,5 +1,5 @@
+ failsafe_mode: true
+-listen_addresses: localhost,192.168.56.20,192.168.56.10
++listen_addresses: localhost,192.168.56.20,192.168.56.10,192.168.56.30
+ loop_wait: 10
+ master_start_timeout: 30
+ maximum_lag_on_failover: 1048576
+
+Configuration changed
+
+
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patronictl -c /etc/patroni/config.yml restart 18/main ubt-pg-aduron-dbnode2
++ Cluster: 18/main (7590773680200294160) ---------+---------+----+-------------+-----+------------+-----+-----------------+----------------------------------+----------------------+
+| Member                | Host          | Role    | State   | TL | Receive LSN | Lag | Replay LSN | Lag | Pending restart | Pending restart reason           | Tags                 |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+-----------------+----------------------------------+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Replica | running |  1 |   0/1000000 |   8 |  0/17AF040 |   0 | *               | config_file: [hidden - too long] | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     |                 |                                  | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     |                 |                                  | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+-----------------+----------------------------------+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader  | running |  6 |             |     |            |     | *               | config_file: [hidden - too long] | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     |                 |                                  | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     |                 |                                  | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+-----------------+----------------------------------+----------------------+
+When should the restart take place (e.g. 2026-01-18T09:11)  [now]:
+Are you sure you want to restart members ubt-pg-aduron-dbnode2? [y/N]: y
+Restart if the PostgreSQL version is less than provided (e.g. 9.5.2)  []:
+Success: restart on member ubt-pg-aduron-dbnode2
+```
+
+patronictl этого позволит, однако после перезапуска, постгрес всё же ее не применяет:
+```sh
+postgres=# show listen_addresses;
+ listen_addresses
+------------------
+ localhost
+(1 row)
+```
+
+В конце концов, верный способ этого настроить нашелся в документации:
+
+<img src="img/3_patroni/listen_addresses.png" width="1000" />
+
+> [!TIP]
+> Другими словами, это означает что нужно
+> - Убрать настойку `listen_addresses` из конфига
+> - Вместе него пользоваться параметром `listen`, который как раз был настроен на 'localhost'. Поставим '0.0.0.0'
+> Затем сделал `reload`, `restart` мастера и `restart` реплики. 
+
+Наконец-то listen_addresses принимает верное значение и позволяет подключаться...
+```sh
+postgres=# show listen_addresses
+postgres-# ;
+ listen_addresses
+------------------
+ 0.0.0.0
+(1 row)
+
+aduron@ubt-pg-aduron-dbnode1:~$ psql -h 192.168.56.20 -p 5432 -U postgres
+Password for user postgres:
+psql (18.1 (Ubuntu 18.1-1.pgdg24.04+2))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off, ALPN: postgresql)
+Type "help" for help.
+
+postgres=#
+
+aduron@ubt-pg-aduron-dbnode1:~$ psql -h 192.168.56.10 -p 5432 -U postgres
+Password for user postgres:
+psql (18.1 (Ubuntu 18.1-1.pgdg24.04+2))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off, ALPN: postgresql)
+Type "help" for help.
+
+postgres=#
+```
+... что в свой очерень допускает синхронизацию реплики с мастера.
+```sh
+Jan 18 08:36:26 ubt-pg-aduron-dbnode1 patroni[4454]: 2026-01-18 08:36:26.112 UTC [4454] LOG:  started streaming WAL from primary at 0/1000000 on timeline 6
+Jan 18 08:36:27 ubt-pg-aduron-dbnode1 patroni[4451]: 2026-01-18 08:36:27.970 UTC [4451] LOG:  redo starts at 0/17B0440
+
+Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2103]: 2026-01-18 08:36:27.959 UTC [2103] replicator@[unknown] LOG:  standby "ubt-pg-aduron-dbnode1" is now a synchronous standby with priority 1
+Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2103]: 2026-01-18 08:36:27.959 UTC [2103] replicator@[unknown] STATEMENT:  START_REPLICATION SLOT "ubt_pg_aduron_dbnode1" 0/1000000 TIMELINE 6
+```
+
+#### Состояние кластера в конце этого шага
+
+У нас работоспособный кластер с точки зрения репликации на базе *Patroni* и *etcd*
+- *Patroni* правилно запускает участников кластера, управляет ими и их конфигурацией. Та конфигурация правильно сохраняеться в DCS и применяется.
+- Состояние верное в зависимости от настроек репликации.
+- *Patroni* сам же инициализировал *replica* до правильного состояния.
+- Службы правильно настроены, как с стороны *etcd*, как и со стороны *Postgres* / *Patroni*.  
+
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patronictl -c /etc/patroni/config.yml list 18/main
++ Cluster: 18/main (7590773680200294160) --------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role         | State     | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Sync Standby | streaming |  6 |   0/17B05A8 |   0 |  0/17B05A8 |   0 | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader       | running   |  6 |             |     |            |     | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+
+aduron@ubt-pg-aduron-dbnode2:~$ sudo systemctl status patroni.service
+[sudo] password for aduron:
+● patroni.service - Patroni high-availability PostgreSQL
+     Loaded: loaded (/etc/systemd/system/patroni.service; enabled; preset: enabled)
+     Active: active (running) since Sun 2026-01-18 06:57:34 UTC; 2h 26min ago
+   Main PID: 783 (patroni)
+      Tasks: 18 (limit: 2265)
+     Memory: 281.1M (peak: 306.9M)
+        CPU: 23.006s
+     CGroup: /system.slice/patroni.service
+             ├─ 783 /opt/patroni/bin/python3 /opt/patroni/bin/patroni /etc/patroni/config.yml
+             ├─2083 /usr/lib/postgresql/18/bin/postgres -D /mnt/data/postgresql/18/main --config-file=/mnt/data/postgresql/18/main/postgresql.conf --listen_addresses=0.0.0.0 --port=5432 --cluster_name=18/m>
+             ├─2084 "postgres: 18/main: io worker 0"
+             ├─2085 "postgres: 18/main: io worker 1"
+             ├─2086 "postgres: 18/main: io worker 2"
+             ├─2087 "postgres: 18/main: checkpointer "
+             ├─2088 "postgres: 18/main: background writer "
+             ├─2091 "postgres: 18/main: walwriter "
+             ├─2092 "postgres: 18/main: autovacuum launcher "
+             ├─2093 "postgres: 18/main: logical replication launcher "
+             ├─2097 "postgres: 18/main: postgres postgres 127.0.0.1(45512) idle"
+             └─2103 "postgres: 18/main: walsender replicator 192.168.56.10(59640) streaming 0/17B05A8"
+
+Jan 18 08:36:17 ubt-pg-aduron-dbnode2 patroni[2095]: localhost:5432 - accepting connections
+Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2104]: server signaled
+Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2083]: 2026-01-18 08:36:27.806 UTC [2083] LOG:  received SIGHUP, reloading configuration files
+Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2083]: 2026-01-18 08:36:27.806 UTC [2083] LOG:  parameter "synchronous_standby_names" changed to ""ubt-pg-aduron-dbnode1""
+Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2083]: 2026-01-18 08:36:27.808 UTC [2083] LOG:  could not open file "/mnt/data/postgresql/18/main/pg_ident.conf": No such file or directory
+Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2083]: 2026-01-18 08:36:27.808 UTC [2083] LOG:  /mnt/data/postgresql/18/main/pg_ident.conf was not reloaded
+Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2103]: 2026-01-18 08:36:27.959 UTC [2103] replicator@[unknown] LOG:  standby "ubt-pg-aduron-dbnode1" is now a synchronous standby with priority 1
+Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2103]: 2026-01-18 08:36:27.959 UTC [2103] replicator@[unknown] STATEMENT:  START_REPLICATION SLOT "ubt_pg_aduron_dbnode1" 0/1000000 TIMELINE 6
+Jan 18 08:41:17 ubt-pg-aduron-dbnode2 patroni[2087]: 2026-01-18 08:41:17.918 UTC [2087] LOG:  checkpoint starting: time
+Jan 18 08:41:17 ubt-pg-aduron-dbnode2 patroni[2087]: 2026-01-18 08:41:17.963 UTC [2087] LOG:  checkpoint complete: wrote 0 buffers (0.0%), wrote 3 SLRU buffers; 0 WAL file(s) added, 0 removed, 0 recycled; 
+
+
+aduron@ubt-pg-aduron-dbnode1:~$ sudo systemctl status patroni.service
+● patroni.service - Patroni high-availability PostgreSQL
+     Loaded: loaded (/etc/systemd/system/patroni.service; enabled; preset: enabled)
+     Active: active (running) since Sun 2026-01-18 06:57:31 UTC; 2h 26min ago
+   Main PID: 775 (patroni)
+      Tasks: 16 (limit: 2265)
+     Memory: 191.6M (peak: 212.6M)
+        CPU: 47.999s
+     CGroup: /system.slice/patroni.service
+             ├─ 775 /opt/patroni/bin/python3 /opt/patroni/bin/patroni /etc/patroni/config.yml
+             ├─4445 /usr/lib/postgresql/18/bin/postgres -D /mnt/data/postgresql/18/main --config-file=/mnt/data/postgresql/18/main/postgresql.conf --listen_addresses=0.0.0.0 --port=5432 --cluster_name=18/m>
+             ├─4446 "postgres: 18/main: io worker 0"
+             ├─4447 "postgres: 18/main: io worker 1"
+             ├─4448 "postgres: 18/main: io worker 2"
+             ├─4449 "postgres: 18/main: checkpointer "
+             ├─4450 "postgres: 18/main: background writer "
+             ├─4451 "postgres: 18/main: startup recovering 000000060000000000000001"
+             ├─4454 "postgres: 18/main: walreceiver streaming 0/17B05A8"
+             └─4457 "postgres: 18/main: postgres postgres 127.0.0.1(38540) idle"
+
+Jan 18 08:36:26 ubt-pg-aduron-dbnode1 patroni[4445]: 2026-01-18 08:36:26.084 UTC [4445] LOG:  database system is ready to accept read-only connections
+Jan 18 08:36:26 ubt-pg-aduron-dbnode1 patroni[4453]: 2026-01-18 08:36:26.087 UTC [4453] postgres@postgres FATAL:  the database system is starting up
+Jan 18 08:36:26 ubt-pg-aduron-dbnode1 patroni[4452]: localhost:5432 - rejecting connections
+Jan 18 08:36:26 ubt-pg-aduron-dbnode1 patroni[4455]: localhost:5432 - accepting connections
+Jan 18 08:36:26 ubt-pg-aduron-dbnode1 patroni[4454]: 2026-01-18 08:36:26.112 UTC [4454] LOG:  started streaming WAL from primary at 0/1000000 on timeline 6
+Jan 18 08:36:27 ubt-pg-aduron-dbnode1 patroni[4451]: 2026-01-18 08:36:27.970 UTC [4451] LOG:  redo starts at 0/17B0440
+Jan 18 08:41:26 ubt-pg-aduron-dbnode1 patroni[4449]: 2026-01-18 08:41:26.202 UTC [4449] LOG:  restartpoint starting: time
+Jan 18 08:41:26 ubt-pg-aduron-dbnode1 patroni[4449]: 2026-01-18 08:41:26.235 UTC [4449] LOG:  restartpoint complete: wrote 0 buffers (0.0%), wrote 2 SLRU buffers; 0 WAL file(s) added, 0 removed, 0 recycled>
+Jan 18 08:41:26 ubt-pg-aduron-dbnode1 patroni[4449]: 2026-01-18 08:41:26.235 UTC [4449] LOG:  recovery restart point at 0/17B04A0
+Jan 18 08:41:26 ubt-pg-aduron-dbnode1 patroni[4449]: 2026-01-18 08:41:26.235 UTC [4449] DETAIL:  Last completed transaction was at log time 2026-01-18 08:36:27.956562+00.
+
+```
+
 
 ### Тестирование переключения и отказоустойчивости кластера
 
@@ -1634,7 +2654,8 @@ aduron@ubt-pg-aduron-cluster3:~$ sudo vi /etc/default/etcd/ubt-pg-aduron-etcd3.c
 2. [How to install etcd on Ubuntu](https://linuxconfig.org/how-to-install-etcd-on-ubuntu)
 3. [Пример установления etcd](https://habr.com/ru/companies/jetinfosystems/articles/847872/?ysclid=mjwo79l286676759989)
 4. [Cluster Id Mismatch - Reseting member ID](https://stackoverflow.com/questions/40585943/etcd-cluster-id-mistmatch)
-
+5. [Официальный сайт Патрони](https://patroni.readthedocs.io/en/latest/installation.html)
+6. [Документация Patroni - Configuration](https://patroni.readthedocs.io/en/latest/patroni_configuration.html)
 
 ## Замечания
 
