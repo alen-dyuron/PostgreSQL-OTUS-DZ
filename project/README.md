@@ -2512,7 +2512,7 @@ postgres=# show listen_addresses;
 
 В конце концов, верный способ этого настроить нашелся в документации:
 
-<img src="img/3_patroni/listen_addresses.png" width="1000" />
+<img src="img/3_patroni/listen_addresses.png" />
 
 > [!TIP]
 > Другими словами, это означает что нужно
