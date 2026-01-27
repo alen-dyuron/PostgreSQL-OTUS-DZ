@@ -8,11 +8,10 @@ __Создание и тестирование высоконагруженно�
 
 Цель проекта: Создать высокодоступный кластер PostgreSQL, развёртывание и обслуживание которого будут автоматизированы модулями Patroni и etcd, и тестировать отказоустойчивость кластера в рамках планированного и непланированного переключения роли.
 
-- [x] Создание виртуалной кластеризованной среды Ubuntu c распределённом хранилищем конфигурации etcd
+- [x] Создание виртуальной кластеризованной среды Ubuntu c распределённом хранилищем конфигурации etcd
 - [x] Настраивание модули управления Patroni
-- [ ] Тестирование переключения и отказоустойчивости кластера
-- [ ] ...
-
+- [x] Тестирование переключения и отказоустойчивости кластера
+- [x] Тестирование отказоустойчивость и переключение клиентов с помощью HAProxy
 
 > [!NOTE]
 > Здесь показано галочками какие задачи были выполнены
@@ -642,6 +641,8 @@ Jan 02 14:38:45 ubt-pg-aduron-dbnode1 systemd[1]: Started postgresql@18-main.ser
 Jan 02 14:43:54 ubt-pg-aduron-dbnode1 systemd[1]: Stopping postgresql@18-main.service - PostgreSQL Cluster 18-main...
 Jan 02 14:43:54 ubt-pg-aduron-dbnode1 systemd[1]: postgresql@18-main.service: Deactivated successfully.
 Jan 02 14:43:54 ubt-pg-aduron-dbnode1 systemd[1]: Stopped postgresql@18-main.service - PostgreSQL Cluster 18-main.
+
+aduron@ubt-pg-aduron-dbnode1:~$ sudo systemctl disable postgresql.service
 ```
 
 #### Установка etcd
@@ -1297,7 +1298,7 @@ aduron@ubt-pg-aduron-dbnode2:~/scripts$ netplan status
 ```
 
 Проверяем что etcdctl сможет управлять нашим клоном
-```
+```sh
 aduron@ubt-pg-aduron-dbnode2:~/scripts$ ectl endpoint status -w table
 {"level":"warn","ts":"2026-01-02T18:49:07.051602Z","caller":"clientv3/retry_interceptor.go:62","msg":"retrying of unary invoker failed","target":"etcd-endpoints://0xc000007c00/ubt-pg-aduron-etcd1:2379","attempt":0,"error":"rpc error: code = DeadlineExceeded desc = latest balancer error: last connection error: connection error: desc = \"transport: Error while dialing dial tcp 192.168.47.10:2379: connect: no route to host\""}
 Failed to get the status of endpoint https://ubt-pg-aduron-etcd1:2379 (context deadline exceeded)
@@ -2460,7 +2461,7 @@ postgres=# \du
 ```
 
 > [!TIP]
-> В связи с тем, что указали значение *hba_file*, Patroni игнорирует дунамическую конфигурацию в разделе *pg_hba*.
+> В связи с тем, что указали значение *hba_file*, Patroni игнорирует дунамическую конфигурацию в разделе *pg_hba*. 
 > Здесь удалил польностю настройки `config_file`,`hba_file`,`ident_file` чтобы patroni использовал применял только дунамическую конфигурацию.
 
 
@@ -2512,7 +2513,7 @@ postgres=# show listen_addresses;
 
 В конце концов, верный способ этого настроить нашелся в документации:
 
-<img src="img/3_patroni/listen_addresses.png" />
+<img src="img/3_patroni/listen_addresses.png" width="700" />
 
 > [!TIP]
 > Другими словами, это означает что нужно:
@@ -2554,6 +2555,8 @@ Jan 18 08:36:27 ubt-pg-aduron-dbnode1 patroni[4451]: 2026-01-18 08:36:27.970 UTC
 Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2103]: 2026-01-18 08:36:27.959 UTC [2103] replicator@[unknown] LOG:  standby "ubt-pg-aduron-dbnode1" is now a synchronous standby with priority 1
 Jan 18 08:36:27 ubt-pg-aduron-dbnode2 patroni[2103]: 2026-01-18 08:36:27.959 UTC [2103] replicator@[unknown] STATEMENT:  START_REPLICATION SLOT "ubt_pg_aduron_dbnode1" 0/1000000 TIMELINE 6
 ```
+
+
 
 #### Состояние кластера в конце этого шага
 
@@ -2642,11 +2645,741 @@ Jan 18 08:41:26 ubt-pg-aduron-dbnode1 patroni[4449]: 2026-01-18 08:41:26.202 UTC
 Jan 18 08:41:26 ubt-pg-aduron-dbnode1 patroni[4449]: 2026-01-18 08:41:26.235 UTC [4449] LOG:  restartpoint complete: wrote 0 buffers (0.0%), wrote 2 SLRU buffers; 0 WAL file(s) added, 0 removed, 0 recycled>
 Jan 18 08:41:26 ubt-pg-aduron-dbnode1 patroni[4449]: 2026-01-18 08:41:26.235 UTC [4449] LOG:  recovery restart point at 0/17B04A0
 Jan 18 08:41:26 ubt-pg-aduron-dbnode1 patroni[4449]: 2026-01-18 08:41:26.235 UTC [4449] DETAIL:  Last completed transaction was at log time 2026-01-18 08:36:27.956562+00.
-
 ```
 
 
 ### Тестирование переключения и отказоустойчивости кластера
+
+#### Pause / Resume (Отключение управления кластером в планированных ситуации)
+
+Перед тем, как стопнуть все наши ВМ, поставим кластер Patroni на паузу. Это означает, что Patroni Больше не пример решений управления кластером, что позводяет выполнить планированные задачи (апгрейд, отключение нодов...). В этом проекте пользуемся этой коммандой, чтобы состояние кластера не менялось, особенно кодка ВМ отключаем. 
+
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml pause 18/main
+Success: cluster management is paused
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patronictl -c /etc/patroni/config.yml list 18/main
++ Cluster: 18/main (7590773680200294160) ---------+---------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role    | State   | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Replica | running |  6 |     unknown |     |  0/17B05A8 |   0 | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Replica | stopped |    |     unknown |     |    unknown |     | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+ Maintenance mode: on
+```
+
+После завершения нужных операций, можно перезапустить управление с коммандой `resume`, таким способом
+
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patronictl -c /etc/patroni/config.yml resume 18/main
+Success: cluster management is resumed
+```
+
+Однако в данном случае, что-то пошло не по плану, и кластер остался в непонятном состоянии
+- Лидер видимо нормально запустился (TL 7)
+- Реплика осталась на уровень TL 6 с непонятними сообщениями *patroni[xxx]: server signaled*
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patronictl -c /etc/patroni/config.yml list 18/main
++ Cluster: 18/main (7590773680200294160) ---------+---------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role    | State   | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Replica | running |  6 |     unknown |     |  0/17B05A8 |   0 | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader  | running |  7 |             |     |            |     | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+
+aduron@ubt-pg-aduron-dbnode1:~$ journalctl -feu patroni
+Jan 23 17:35:08 ubt-pg-aduron-dbnode1 systemd[1]: Started patroni.service - Patroni high-availability PostgreSQL.
+Jan 23 17:35:10 ubt-pg-aduron-dbnode1 patroni[801]: postgresql parameter listen_addresses=localhost,192.168.56.20,192.168.56.10 failed validation, defaulting to None
+Jan 23 17:35:10 ubt-pg-aduron-dbnode1 patroni[801]: postgresql parameter wal_keep_size=0 failed validation, defaulting to 128MB
+Jan 23 17:35:12 ubt-pg-aduron-dbnode1 patroni[914]: localhost:5432 - accepting connections
+Jan 23 17:35:12 ubt-pg-aduron-dbnode1 patroni[917]: server signaled
+Jan 23 17:37:48 ubt-pg-aduron-dbnode1 patroni[1187]: server signaled
+Jan 23 17:37:50 ubt-pg-aduron-dbnode1 patroni[1189]: server signaled
+Jan 23 17:37:51 ubt-pg-aduron-dbnode1 patroni[1194]: server signaled
+```
+
+Сравнение между нодами в кнце концов показало, что я неправильно отключил службу Postgresql на пердом ноде
+
+```sh
+aduron@ubt-pg-aduron-dbnode2:~$ sudo systemctl status postgresql.service
+[sudo] password for aduron:
+○ postgresql.service - PostgreSQL RDBMS
+     Loaded: loaded (/usr/lib/systemd/system/postgresql.service; disabled; preset: enabled)
+     Active: inactive (dead)
+
+Last login: Fri Jan 23 19:20:32 2026 from 192.168.56.1
+aduron@ubt-pg-aduron-dbnode1:~$ sudo systemctl status postgresql.service
+[sudo] password for aduron:
+● postgresql.service - PostgreSQL RDBMS
+     Loaded: loaded (/usr/lib/systemd/system/postgresql.service; enabled; preset: enabled)
+     Active: active (exited) since Fri 2026-01-23 19:19:30 UTC; 2min 4s ago
+    Process: 882 ExecStart=/bin/true (code=exited, status=0/SUCCESS)
+   Main PID: 882 (code=exited, status=0/SUCCESS)
+        CPU: 1ms
+```
+
+Вот что предположительно случилось
+- Сервис Постгреса был правильно отключен во время создание кластера (в начале проекта)
+- С целью создать *config* Patroni, на первом ноде временно его включили, на первом ноде. Одноко забыл эго отключить после этого шага.
+- После перезапуска ВМ, сервис Postgresql запускается (что видно и в консоле) и не допускает управления кластором с помощью Patroni
+
+Решать эту проблему можно вот так
+```sh
+aduron@ubt-pg-aduron-dbnode1:~$ sudo systemctl disable postgresql.service
+Synchronizing state of postgresql.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install disable postgresql
+Removed "/etc/systemd/system/multi-user.target.wants/postgresql.service".
+aduron@ubt-pg-aduron-dbnode1:~$ sudo systemctl daemon-reload
+aduron@ubt-pg-aduron-dbnode1:~$ sudo systemctl status postgresql.service
+● postgresql.service - PostgreSQL RDBMS
+     Loaded: loaded (/usr/lib/systemd/system/postgresql.service; disabled; preset: enabled)
+     Active: active (exited) since Fri 2026-01-23 19:19:30 UTC; 2min 29s ago
+   Main PID: 882 (code=exited, status=0/SUCCESS)
+        CPU: 1ms
+
+Jan 23 19:19:30 ubt-pg-aduron-dbnode1 systemd[1]: Starting postgresql.service - PostgreSQL RDBMS...
+Jan 23 19:19:30 ubt-pg-aduron-dbnode1 systemd[1]: Finished postgresql.service - PostgreSQL RDBMS.
+```
+
+
+#### Switchover
+
+Проверяем как именно делается switchover в Patroni
+
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patronictl -c /etc/patroni/config.yml switchover --help
+Usage: patronictl switchover [OPTIONS] [CLUSTER_NAME]
+
+  Switchover to a replica
+
+Options:
+  --group INTEGER           Citus group
+  --leader, --primary TEXT  The name of the current leader
+  --candidate TEXT          The name of the candidate
+  --scheduled TEXT          Timestamp of a scheduled switchover in unambiguous
+                            format (e.g. ISO 8601)
+  --force                   Do not ask for confirmation at any point
+  --help                    Show this message and exit.
+```
+
+Дальше:
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml switchover --leader ubt-pg-aduron-dbnode2 --candidate ubt-pg-aduron-dbnode1 18/main
+Current cluster topology
++ Cluster: 18/main (7590773680200294160) --------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role         | State     | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Sync Standby | streaming |  7 |   0/17B09F8 |   0 |  0/17B09F8 |   0 | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader       | running   |  7 |             |     |            |     | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+When should the switchover take place (e.g. 2026-01-23T18:50 )  [now]:
+Are you sure you want to switchover cluster 18/main, demoting current leader ubt-pg-aduron-dbnode2? [y/N]: y
+2026-01-23 17:50:16.67020 Successfully switched over to "ubt-pg-aduron-dbnode1"
++ Cluster: 18/main (7590773680200294160) ---------+---------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role    | State   | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Leader  | running |  7 |             |     |            |     | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Replica | stopped |    |     unknown |     |    unknown |     | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+```
+После несколько секунд, вотром ноде принимает роль *Sync Standby*
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml list 18/main
++ Cluster: 18/main (7590773680200294160) --------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role         | State     | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Leader       | running   |  8 |             |     |            |     | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Sync Standby | streaming |  8 |   0/17B0D08 |   0 |  0/17B0D08 |   0 | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+```
+
+Обратное переключение 
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml switchover --leader ubt-pg-aduron-dbnode1 --candidate ubt-pg-aduron-dbnode2 18/main
+Current cluster topology
++ Cluster: 18/main (7590773680200294160) --------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role         | State     | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Leader       | running   |  8 |             |     |            |     | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Sync Standby | streaming |  8 |   0/17B0E10 |   0 |  0/17B0E10 |   0 | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+When should the switchover take place (e.g. 2026-01-23T19:24 )  [now]:
+Are you sure you want to switchover cluster 18/main, demoting current leader ubt-pg-aduron-dbnode1? [y/N]: y
+2026-01-23 18:24:21.44745 Successfully switched over to "ubt-pg-aduron-dbnode2"
++ Cluster: 18/main (7590773680200294160) ---------+---------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role    | State   | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Replica | stopped |    |     unknown |     |    unknown |     | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader  | running |  8 |             |     |            |     | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml list 18/main
++ Cluster: 18/main (7590773680200294160) --------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role         | State     | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Sync Standby | streaming |  9 |   0/17B10C0 |   0 |  0/17B10C0 |   0 | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader       | running   |  9 |             |     |            |     | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+```
+
+#### Потерь реплики *ubt-pg-aduron-dbnode1*
+
+При отключении реплики, замечается что Patroni потеряет соединение с точки *etcd* ubt-pg-aduron-etcd1.
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml list 18/main
+2026-01-23 18:40:22,104 - ERROR - Failed to get list of machines from https://ubt-pg-aduron-etcd1:2379/v3beta: MaxRetryError('HTTPSConnectionPool(host=\'ubt-pg-aduron-etcd1\', port=2379): Max retries exceeded with url: /version (Caused by NewConnectionError("HTTPSConnection(host=\'ubt-pg-aduron-etcd1\', port=2379): Failed to establish a new connection: [Errno 111] Connection refused"))')
++ Cluster: 18/main (7590773680200294160) ---------+-----------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role    | State     | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+---------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Replica | streaming |  9 |   0/17B13F0 |   0 |  0/17B13F0 |   0 | clonefrom: true      |
+|                       |               |         |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |           |    |             |     |            |     | nosync: true         |
+|                       |               |         |           |    |             |     |            |     | sync_priority: 0     |
++-----------------------+---------------+---------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader  | running   |  9 |             |     |            |     | clonefrom: true      |
+|                       |               |         |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+-----------+----+-------------+-----+------------+-----+----------------------+
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$
+```
+После 30 секунд Patroni считает, что можно вытеснить этого участника из кластера.
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml list 18/main
++ Cluster: 18/main (7590773680200294160) --------+---------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role   | State   | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader | running |  9 |             |     |            |     | clonefrom: true      |
+|                       |               |        |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |        |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------+---------+----+-------------+-----+------------+-----+----------------------+
+```
+
+После перезапуска, он возврашается в состав кдастера etcd
+```sh
+Jan 23 18:43:35 ubt-pg-aduron-dbnode2 etcd[763]: failed to reach the peerURL(https://ubt-pg-aduron-etcd1:2380) of member 75ae20a713d9d171 (Get "https://ubt-pg-aduron-etcd1:2380/version": dial tcp 192.168.47.10:2380: connect: connection refused)
+Jan 23 18:43:35 ubt-pg-aduron-dbnode2 etcd[763]: cannot get the version of member 75ae20a713d9d171 (Get "https://ubt-pg-aduron-etcd1:2380/version": dial tcp 192.168.47.10:2380: connect: connection refused)
+Jan 23 18:43:36 ubt-pg-aduron-dbnode2 etcd[763]: peer 75ae20a713d9d171 became active
+Jan 23 18:43:36 ubt-pg-aduron-dbnode2 etcd[763]: established a TCP streaming connection with peer 75ae20a713d9d171 (stream MsgApp v2 reader)
+Jan 23 18:43:36 ubt-pg-aduron-dbnode2 etcd[763]: established a TCP streaming connection with peer 75ae20a713d9d171 (stream Message reader)
+Jan 23 18:43:36 ubt-pg-aduron-dbnode2 etcd[763]: established a TCP streaming connection with peer 75ae20a713d9d171 (stream MsgApp v2 writer)
+Jan 23 18:43:36 ubt-pg-aduron-dbnode2 etcd[763]: established a TCP streaming connection with peer 75ae20a713d9d171 (stream Message writer)
+Jan 23 18:43:40 ubt-pg-aduron-dbnode2 etcd[763]: the clock difference against peer 75ae20a713d9d171 is too high [2.232529576s > 1s]
+Jan 23 18:43:40 ubt-pg-aduron-dbnode2 etcd[763]: the clock difference against peer 75ae20a713d9d171 is too high [2.250913217s > 1s]
+```
+и также в состав кластера Patroni
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml list 18/main
++ Cluster: 18/main (7590773680200294160) --------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role         | State     | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Sync Standby | streaming |  9 |   0/17B1558 |   0 |  0/17B1558 |   0 | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader       | running   |  9 |             |     |            |     | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1246]: 2026-01-23 18:46:15.812 GMT [1246] LOG:  starting PostgreSQL 18.1 (Ubuntu 18.1-1.pgdg24.04+2) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0, 64-bit
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1246]: 2026-01-23 18:46:15.813 GMT [1246] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1246]: 2026-01-23 18:46:15.816 GMT [1246] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:46:15.826 GMT [1252] LOG:  database system was shut down in recovery at 2026-01-23 18:46:15 GMT
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:46:15.827 GMT [1252] LOG:  entering standby mode
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1254]: 2026-01-23 18:46:15.833 GMT [1254] FATAL:  the database system is starting up
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1253]: localhost:5432 - rejecting connections
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:46:15.845 GMT [1252] LOG:  redo starts at 0/17B12E8
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:46:15.845 GMT [1252] LOG:  consistent recovery state reached at 0/17B13F0
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:46:15.845 GMT [1252] LOG:  invalid record length at 0/17B13F0: expected at least 24, got 0
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1246]: 2026-01-23 18:46:15.845 GMT [1246] LOG:  database system is ready to accept read-only connections
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1256]: 2026-01-23 18:46:15.846 GMT [1256] FATAL:  the database system is starting up
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1255]: localhost:5432 - rejecting connections
+Jan 23 18:46:15 ubt-pg-aduron-dbnode1 patroni[1257]: 2026-01-23 18:46:15.872 GMT [1257] LOG:  started streaming WAL from primary at 0/1000000 on timeline 9
+Jan 23 18:46:16 ubt-pg-aduron-dbnode1 patroni[1258]: localhost:5432 - accepting connections
+```
+
+#### Failover - Потерь мастера *ubt-pg-aduron-dbnode2*
+
+В этот раз отключаем текущего мастера ubt-pg-aduron-dbnode2. Это сразу замеячается на стендбай (*[1353] FATAL:  streaming replication receiver "18/main" could not connect to the primary server*). После несколько секунд Patroni выполняет комманду *Promote* в постгресе.
+
+```sh
+Jan 23 18:52:05 ubt-pg-aduron-dbnode1 patroni[1257]: 2026-01-23 18:52:05.725 GMT [1257] FATAL:  could not receive data from WAL stream: FATAL:  terminating connection due to administrator command
+Jan 23 18:52:05 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:52:05.728 GMT [1252] LOG:  invalid record length at 0/17B16C0: expected at least 24, got 0
+Jan 23 18:52:05 ubt-pg-aduron-dbnode1 patroni[1353]: 2026-01-23 18:52:05.802 GMT [1353] FATAL:  streaming replication receiver "18/main" could not connect to the primary server: connection to server at "192.168.56.20", port 5432 failed: FATAL:  the database system is shutting down
+Jan 23 18:52:05 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:52:05.802 GMT [1252] LOG:  waiting for WAL to become available at 0/17B16D8
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1358]: server signaled
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1246]: 2026-01-23 18:52:07.222 GMT [1246] LOG:  received SIGHUP, reloading configuration files
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1246]: 2026-01-23 18:52:07.223 GMT [1246] LOG:  parameter "synchronous_standby_names" changed to "*"
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1360]: 2026-01-23 18:52:07.229 GMT [1360] FATAL:  streaming replication receiver "18/main" could not connect to the primary server: connection to server at "192.168.56.20", port 5432 failed: Connection refused
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1360]:                 Is the server running on that host and accepting TCP/IP connections?
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:52:07.229 GMT [1252] LOG:  waiting for WAL to become available at 0/17B16D8
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1361]: server promoting
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:52:07.318 GMT [1252] LOG:  received promote request
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:52:07.318 GMT [1252] LOG:  redo done at 0/17B1688 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 351.47 s
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:52:07.318 GMT [1252] LOG:  last completed transaction was at log time 2026-01-23 18:46:22.496364+00
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:52:07.326 GMT [1252] LOG:  selected new timeline ID: 10
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1252]: 2026-01-23 18:52:07.428 GMT [1252] LOG:  archive recovery complete
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1250]: 2026-01-23 18:52:07.440 GMT [1250] LOG:  checkpoint starting: force
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1246]: 2026-01-23 18:52:07.441 GMT [1246] LOG:  database system is ready to accept connections
+Jan 23 18:52:07 ubt-pg-aduron-dbnode1 patroni[1250]: 2026-01-23 18:52:07.456 GMT [1250] LOG:  checkpoint complete: wrote 0 buffers (0.0%), wrote 2 SLRU buffers; 0 WAL file(s) added, 0 removed, 0 recycled; write=0.004 s, sync=0.002 s, total=0.017 s; sync files=2, longest=0.001 s, average=0.001 s; distance=0 kB, estimate=0 kB; lsn=0/17B1750, redo lsn=0/17B16F8
+```
+В patronictl *ubt-pg-aduron-dbnode1* принимает роль лидера. После 30 секунд отсутствия доступа *ubt-pg-aduron-dbnode2* вытесняется. 
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patronictl -c /etc/patroni/config.yml list 18/main
++ Cluster: 18/main (7590773680200294160) ---------+---------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role    | State   | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Leader  | running | 10 |             |     |            |     | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Replica | stopped |    |     unknown |     |    unknown |     | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patronictl -c /etc/patroni/config.yml list 18/main
+2026-01-23 18:52:40,352 - ERROR - Failed to get list of machines from https://ubt-pg-aduron-etcd2:2379/v3beta: MaxRetryError("HTTPSConnectionPool(host='ubt-pg-aduron-etcd2', port=2379): Max retries exceeded with url: /version (Caused by ConnectTimeoutError(<HTTPSConnection(host='ubt-pg-aduron-etcd2', port=2379) at 0x746a69df19d0>, 'Connection to ubt-pg-aduron-etcd2 timed out. (connect timeout=1.6666666666666667)'))")
++ Cluster: 18/main (7590773680200294160) --------+---------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role   | State   | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Leader | running | 10 |             |     |            |     | clonefrom: true      |
+|                       |               |        |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |        |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------+---------+----+-------------+-----+------------+-----+----------------------+
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$
+```
+
+После перезапуска сервера, *ubt-pg-aduron-dbnode2* принимает роль *Standby* и синхронизируется
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ patronictl -c /etc/patroni/config.yml list 18/main
++ Cluster: 18/main (7590773680200294160) --------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role         | State     | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Leader       | running   | 10 |             |     |            |     | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Sync Standby | streaming | 10 |   0/17B18C0 |   0 |  0/17B18C0 |   0 | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+```
+
+
+### Подключение с помощью HAProxy
+
+#### Установление HAProxy
+
+```sh
+aduron@ubt-pg-aduron-cluster3:~$ sudo apt install haproxy
+[sudo] password for aduron:
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+The following packages were automatically installed and are no longer required:
+  dns-root-data dnsmasq-base libbluetooth3 libndp0 libnm0 libteamdctl0 ppp pptp-linux
+Use 'sudo apt autoremove' to remove them.
+The following additional packages will be installed:
+  liblua5.4-0
+Suggested packages:
+  vim-haproxy haproxy-doc
+The following NEW packages will be installed:
+  haproxy liblua5.4-0
+0 upgraded, 2 newly installed, 0 to remove and 2 not upgraded.
+Need to get 2,236 kB of archives.
+After this operation, 5,274 kB of additional disk space will be used.
+Do you want to continue? [Y/n] y
+Get:1 http://archive.ubuntu.com/ubuntu noble/main amd64 liblua5.4-0 amd64 5.4.6-3build2 [166 kB]
+Get:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 haproxy amd64 2.8.16-0ubuntu0.24.04.1 [2,070 kB]
+Fetched 2,236 kB in 2s (1,164 kB/s)
+Selecting previously unselected package liblua5.4-0:amd64.
+(Reading database ... 93677 files and directories currently installed.)
+Preparing to unpack .../liblua5.4-0_5.4.6-3build2_amd64.deb ...
+Unpacking liblua5.4-0:amd64 (5.4.6-3build2) ...
+Selecting previously unselected package haproxy.
+Preparing to unpack .../haproxy_2.8.16-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking haproxy (2.8.16-0ubuntu0.24.04.1) ...
+Setting up liblua5.4-0:amd64 (5.4.6-3build2) ...
+Setting up haproxy (2.8.16-0ubuntu0.24.04.1) ...
+Created symlink /etc/systemd/system/multi-user.target.wants/haproxy.service → /usr/lib/systemd/system/haproxy.service.
+Processing triggers for libc-bin (2.39-0ubuntu8.6) ...
+Processing triggers for rsyslog (8.2312.0-3ubuntu9.1) ...
+Processing triggers for man-db (2.12.0-4build2) ...
+Scanning processes...
+Scanning linux images...
+
+Running kernel seems to be up-to-date.
+
+No services need to be restarted.
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+```
+
+aduron@ubt-pg-aduron-cluster3:~$ sudo mv /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.backup_26012026
+
+
+> [!CAUTION]
+> Порт *frontend* должен быть свободен, иначе появится подобнапя ошибка: 
+> `cannot bind socket (Address already in use) for [0.0.0.0:5432]`
+> В моем случае, это случилось из-за того, что кластер постгресса был ещё настроен на 3ем ноде после клонирования
+
+```sh
+Jan 26 18:23:24 ubt-pg-aduron-cluster3 haproxy[1539]: [NOTICE]   (1539) : haproxy version is 2.8.16-0ubuntu0.24.04.1
+Jan 26 18:23:24 ubt-pg-aduron-cluster3 haproxy[1539]: [NOTICE]   (1539) : path to executable is /usr/sbin/haproxy
+Jan 26 18:23:24 ubt-pg-aduron-cluster3 haproxy[1539]: [ALERT]    (1539) : Binding [/etc/haproxy/haproxy.cfg:39] for proxy postgres: cannot bind socket (Address already in use) for [0.0.0.0:5432]
+Jan 26 18:23:24 ubt-pg-aduron-cluster3 haproxy[1539]: [ALERT]    (1539) : [/usr/sbin/haproxy.main()] Some protocols failed to start their listeners! Exiting.
+Jan 26 18:23:24 ubt-pg-aduron-cluster3 systemd[1]: haproxy.service: Main process exited, code=exited, status=1/FAILURE
+```
+После отключения haproxy запустился без проблем
+```sh
+aduron@ubt-pg-aduron-cluster3:~$ sudo pg_lsclusters
+Ver Cluster Port Status Owner    Data directory              Log file
+18  main    5432 online postgres /var/lib/postgresql/18/main /var/log/postgresql/postgresql-18-main.log
+aduron@ubt-pg-aduron-cluster3:~$ sudo systemctl stop postgresql
+aduron@ubt-pg-aduron-cluster3:~$ sudo pg_dropcluster 18 main
+aduron@ubt-pg-aduron-cluster3:~$ sudo pg_lsclusters
+Ver Cluster Port Status Owner Data directory Log file
+```
+
+
+#### Простая roundrobin конфигурация (без проверения ролей)
+
+```sh
+aduron@ubt-pg-aduron-cluster3:~$ sudo vi /etc/haproxy/haproxy.cfg
+global
+    daemon
+    maxconn 4096
+    log stdout local0
+    stats socket /var/lib/haproxy/stats mode 660 level admin
+
+defaults
+    mode tcp
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+    log global
+
+frontend postgres_ssl
+    bind *:5432
+    default_backend postgres_backend
+
+backend postgres_backend
+    balance roundrobin
+    server ubt-pg-aduron-dbnode1 192.168.56.10:5432 check inter 5000ms rise 2 fall 3 on-marked-down shutdown-sessions
+    server ubt-pg-aduron-dbnode2 192.168.56.20:5432 check inter 5000ms rise 2 fall 3 on-marked-down shutdown-sessions
+
+listen stats
+    bind *:8404
+    mode http
+    stats enable
+    stats uri /stats
+    stats refresh 30s
+```
+
+```sh
+aduron@ubt-pg-aduron-cluster3:~$ sudo systemctl status haproxy
+● haproxy.service - HAProxy Load Balancer
+     Loaded: loaded (/usr/lib/systemd/system/haproxy.service; enabled; preset: enabled)
+     Active: active (running) since Mon 2026-01-26 18:44:18 UTC; 25s ago
+       Docs: man:haproxy(1)
+             file:/usr/share/doc/haproxy/configuration.txt.gz
+   Main PID: 2018 (haproxy)
+     Status: "Ready."
+      Tasks: 3 (limit: 2265)
+     Memory: 7.8M (peak: 8.3M)
+        CPU: 113ms
+     CGroup: /system.slice/haproxy.service
+             ├─2018 /usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg -p /run/haproxy.pid -S /run/haproxy-master.sock
+             └─2020 /usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg -p /run/haproxy.pid -S /run/haproxy-master.sock
+
+Jan 26 18:44:18 ubt-pg-aduron-cluster3 systemd[1]: Starting haproxy.service - HAProxy Load Balancer...
+Jan 26 18:44:18 ubt-pg-aduron-cluster3 haproxy[2018]: [NOTICE]   (2018) : New worker (2020) forked
+Jan 26 18:44:18 ubt-pg-aduron-cluster3 haproxy[2018]: [NOTICE]   (2018) : Loading success.
+Jan 26 18:44:18 ubt-pg-aduron-cluster3 systemd[1]: Started haproxy.service - HAProxy Load Balancer.
+```
+
+
+<img src="img/4_haproxy/balance_roundrobin.png"/>
+
+
+
+#### Конфигурация с учетом роли 
+
+Дальше постарался создать долее служную конфигурацию
+```sh
+aduron@ubt-pg-aduron-cluster3:~$ sudo vi /etc/haproxy/haproxy.cfg
+
+global
+    daemon
+    maxconn 4096
+    log stdout local0
+    stats socket /var/lib/haproxy/stats mode 660 level admin
+
+defaults
+    mode tcp
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+    log global
+
+frontend postgres_ssl
+    bind *:5432
+    default_backend postgres_backend
+
+backend postgres_backend
+    option httpchk OPTIONS /master                                             
+    http-check expect status 200
+	  default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server ubt-pg-aduron-dbnode1 192.168.56.10:5432 check
+    server ubt-pg-aduron-dbnode2 192.168.56.20:5432 check
+
+listen stats
+    bind *:8404
+    mode http
+    stats enable
+    stats uri /stats
+    stats refresh 30s
+```
+
+однако при запуске столкнулся с такими ошибками как `Server postgres_backend/ubt-pg-aduron-dbnode1 is DOWN, reason: Socket error`
+```sh
+aduron@ubt-pg-aduron-cluster3:~$ sudo systemctl restart haproxy
+Jan 26 19:13:57 ubt-pg-aduron-cluster3 systemd[1]: Started haproxy.service - HAProxy Load Balancer.
+Jan 26 19:13:57 ubt-pg-aduron-cluster3 haproxy[2278]: [WARNING]  (2278) : Server postgres_backend/ubt-pg-aduron-dbnode1 is DOWN, reason: Socket error, check duration: 5ms. 1 active and 0 backup servers left. 0 sessions active, 0 requeued, 0 remaining in queue.
+Jan 26 19:13:57 ubt-pg-aduron-cluster3 haproxy[2278]: <129>Jan 26 19:13:57 haproxy[2278]: Server postgres_backend/ubt-pg-aduron-dbnode1 is DOWN, reason: Socket error, check duration: 5ms. 1 active and 0 backup servers left. 0 sessions active, 0 requeued, 0 remaining in queue.
+Jan 26 19:13:58 ubt-pg-aduron-cluster3 haproxy[2278]: [WARNING]  (2278) : Server postgres_backend/ubt-pg-aduron-dbnode2 is DOWN, reason: Socket error, check duration: 10ms. 0 active and 0 backup servers left. 0 sessions active, 0 requeued, 0 remaining in queue.
+Jan 26 19:13:58 ubt-pg-aduron-cluster3 haproxy[2278]: <129>Jan 26 19:13:58 haproxy[2278]: Server postgres_backend/ubt-pg-aduron-dbnode2 is DOWN, reason: Socket error, check duration: 10ms. 0 active and 0 backup servers left. 0 sessions active, 0 requeued, 0 remaining in queue.
+Jan 26 19:13:58 ubt-pg-aduron-cluster3 haproxy[2278]: [ALERT]    (2278) : backend 'postgres_backend' has no server available!
+```
+
+Как описано в документации, HAProxy использует такой же API REST как patronictl (а мы уже знаем что та утилита прекрасно справляется в нашей конфиге). Так что я решил проверить, в чем проблем с этим API.
+Проблем нет, однако без сертификата можно толко запросить его с флогом --insecure
+
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode1:~$ curl --insecure https://192.168.56.10:8008/master
+{"state": "running", "postmaster_start_time": "2026-01-26 18:11:42.051548+00:00", "role": "primary", "server_version": 180001, "xlog": {"location": 24849080}, "timeline": 13, "replication": [{"usename": "replicator", "application_name": "ubt-pg-aduron-dbnode2", "client_addr": "192.168.56.20", "state": "streaming", "sync_state": "sync", "sync_priority": 1}], "dcs_last_seen": 1769456261, "tags": {"clonefrom": true, "failover_priority": 1, "sync_priority": 1}, "database_system_identifier": "7590773680200294160", "patroni": {"version": "4.1.0", "scope": "18/main", "name": "ubt-pg-aduron-dbnode1"}}(patroni) postgres@ubt-pg-aduron-dbnode1:~$
+```
+
+Видимо HAProxy не может этого понимать, значит нужно найти способ пользоваться тут нашими любимыми сертификатами. В curl нет сложности, работает с флагами --cacert, --cert, и --key (всё же как etcdctl). 
+Проверка:
+```sh
+root@ubt-pg-aduron-cluster3:~# curl -k https://192.168.56.10:8008/cluster  --cacert /etc/default/etcd/.tls/ca.crt --cert  /etc/default/etcd/.tls/ubt-pg-aduron-cluster3.crt --key /etc/default/etcd/.tls/ubt-pg-aduron-cluster3.key  | jq .
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   661    0   661    0     0   9077      0 --:--:-- --:--:-- --:--:--  9180
+{
+  "members": [
+    {
+      "name": "ubt-pg-aduron-dbnode1",
+      "role": "leader",
+      "state": "running",
+      "api_url": "https://192.168.56.10:8008/patroni",
+      "host": "192.168.56.10",
+      "port": 5432,
+      "timeline": 13,
+      "tags": {
+        "clonefrom": true,
+        "failover_priority": 1,
+        "sync_priority": 1
+      }
+    },
+    {
+      "name": "ubt-pg-aduron-dbnode2",
+      "role": "sync_standby",
+      "state": "streaming",
+      "api_url": "https://192.168.56.20:8008/patroni",
+      "host": "192.168.56.20",
+      "port": 5432,
+      "timeline": 13,
+      "tags": {
+        "clonefrom": true,
+        "failover_priority": 1,
+        "sync_priority": 1
+      },
+      "receive_lag": 0,
+      "receive_lsn": "0/17B2AB8",
+      "replay_lag": 0,
+      "replay_lsn": "0/17B2AB8",
+      "lag": 0,
+      "lsn": "0/17B2AB8"
+    }
+  ],
+  "scope": "18/main"
+}
+```
+
+В haproxy, нет таких флагов, делается методом [комбинорования сертификата и ключа](https://www.percona.com/blog/securing-patroni-rest-api-end-points-part-2-using-ssl-certificates/). Работает он следующим образом:
+
+Записываем сертификат нода вместе с ключом в одном файле
+```sh
+root@ubt-pg-aduron-cluster3:~# cat /etc/default/etcd/.tls/ubt-pg-aduron-cluster3.crt /etc/default/etcd/.tls/ubt-pg-aduron-cluster3.key > combined.crt
+root@ubt-pg-aduron-cluster3:~# chmod 777 combined.crt
+```
+копируем комбинированный сертификат в `/etc/haproxy`. Также копируем сертификат ca. 
+```sh
+aduron@ubt-pg-aduron-cluster3:~$ sudo cp /root/combined.crt /etc/haproxy
+aduron@ubt-pg-aduron-cluster3:~$ sudo cp /etc/default/etcd/.tls/ca.crt /etc/haproxy
+aduron@ubt-pg-aduron-cluster3:~$ cd /etc/haproxy
+aduron@ubt-pg-aduron-cluster3:/etc/haproxy$ ls -lrt
+total 28
+-rw-r--r-- 1 root root 1285 Dec  3 15:12 haproxy.cfg.backup_26012026
+drwxr-xr-x 2 root root 4096 Jan 26 18:12 errors
+-rw-r--r-- 1 root root  702 Jan 26 19:06 haproxy.cfg_loadbalance
+-rw-r--r-- 1 root root  941 Jan 26 19:53 haproxy.cfg
+-rwxr-xr-x 1 root root 5354 Jan 26 19:54 combined.crt
+-rw-r--r-- 1 root root 2045 Jan 26 19:54 ca.crt
+```
+
+Затем бэкенд меняем вот так:
+```sh
+backend postgres_backend
+    option httpchk OPTIONS /master
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server ubt-pg-aduron-dbnode1 192.168.56.10:5432 check check-ssl verify none port 8008 crt /etc/haproxy/combined.crt ca-file /etc/haproxy/ca.crt
+    server ubt-pg-aduron-dbnode2 192.168.56.20:5432 check check-ssl verify none port 8008 crt /etc/haproxy/combined.crt ca-file /etc/haproxy/ca.crt
+```
+
+Перезапускаем *haproxy*. Сразу видно, что сервер у которого роль *replica* отображается как *DOWN*.
+```sh
+Jan 26 20:12:32 ubt-pg-aduron-cluster3 haproxy[2614]: [NOTICE]   (2614) : Loading success.
+Jan 26 20:12:32 ubt-pg-aduron-cluster3 systemd[1]: Started haproxy.service - HAProxy Load Balancer.
+Jan 26 20:12:34 ubt-pg-aduron-cluster3 haproxy[2617]: [WARNING]  (2617) : Server postgres_backend/ubt-pg-aduron-dbnode2 is DOWN, reason: Layer7 wrong status, code: 503, info: "Service Unavailable", check duration: 31ms. 1 active and 0 backup servers left. 0 sessions active, 0 requeued, 0 remaining in queue.
+Jan 26 20:12:34 ubt-pg-aduron-cluster3 haproxy[2617]: <129>Jan 26 20:12:34 haproxy[2617]: Server postgres_backend/ubt-pg-aduron-dbnode2 is DOWN, reason: Layer7 wrong status, code: 503, info: "Service Unavailable", check duration: 31ms. 1 active and 0 backup servers left. 0 sessions active, 0 requeued, 0 remaining in queue.
+```
+
+Проверяем, к какому серверу подключаемся через haproxy (то есть с этого хоста с портом фронтенда):
+```sql
+aduron@ubt-pg-aduron-cluster3:/etc/haproxy$ psql 'postgresql://postgres:Oracle123@localhost:5432/postgres'
+psql (18.1 (Ubuntu 18.1-1.pgdg24.04+2))
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off, ALPN: postgresql)
+Type "help" for help.
+
+postgres=# SELECT inet_server_addr() as ip, CASE WHEN pg_is_in_recovery() THEN 'Replica' ELSE 'Primary' END as role;
+      ip       |  role
+---------------+---------
+ 192.168.56.10 | Primary
+(1 row)
+```
+
+Проверяем, через API `/stats`:
+
+<img src="img/4_haproxy/correct_check.png"/>
+
+
+#### Проверка переключения (switchover)
+
+Выполняем switchover через Patroni.
+```sh
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml switchover --leader ubt-pg-aduron-dbnode1 --candidate ubt-pg-aduron-dbnode2 18/main
+Current cluster topology
++ Cluster: 18/main (7590773680200294160) --------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role         | State     | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Leader       | running   | 13 |             |     |            |     | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Sync Standby | streaming | 13 |   0/17B2AB8 |   0 |  0/17B2AB8 |   0 | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+When should the switchover take place (e.g. 2026-01-26T21:17 )  [now]:
+Are you sure you want to switchover cluster 18/main, demoting current leader ubt-pg-aduron-dbnode1? [y/N]: y
+2026-01-26 20:18:10.73505 Successfully switched over to "ubt-pg-aduron-dbnode2"
++ Cluster: 18/main (7590773680200294160) ---------+---------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role    | State   | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Replica | stopped |    |     unknown |     |    unknown |     | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader  | running | 13 |             |     |            |     | clonefrom: true      |
+|                       |               |         |         |    |             |     |            |     | failover_priority: 1 |
+|                       |               |         |         |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+---------+---------+----+-------------+-----+------------+-----+----------------------+
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$
+(patroni) postgres@ubt-pg-aduron-dbnode2:~$ patronictl -c /etc/patroni/config.yml list 18/main
++ Cluster: 18/main (7590773680200294160) --------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| Member                | Host          | Role         | State     | TL | Receive LSN | Lag | Replay LSN | Lag | Tags                 |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode1 | 192.168.56.10 | Sync Standby | streaming | 14 |   0/17B2D68 |   0 |  0/17B2D68 |   0 | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+| ubt-pg-aduron-dbnode2 | 192.168.56.20 | Leader       | running   | 14 |             |     |            |     | clonefrom: true      |
+|                       |               |              |           |    |             |     |            |     | failover_priority: 1 |
+|                       |               |              |           |    |             |     |            |     | sync_priority: 1     |
++-----------------------+---------------+--------------+-----------+----+-------------+-----+------------+-----+----------------------+
+```
+
+при попытке выполнить запрос, psql замечает, что потерялось соединение. При этом, он сразу пытается переключиться. Видно и здесь что Leader (Primary) находится теепер на *ubt-pg-aduron-dbnode2*:
+```sql
+postgres=# SELECT inet_server_addr() as ip, CASE WHEN pg_is_in_recovery() THEN 'Replica' ELSE 'Primary' END as role;
+SSL error: unexpected eof while reading
+The connection to the server was lost. Attempting reset: Succeeded.
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off, ALPN: postgresql)
+postgres=# SELECT inet_server_addr() as ip, CASE WHEN pg_is_in_recovery() THEN 'Replica' ELSE 'Primary' END as role;
+      ip       |  role
+---------------+---------
+ 192.168.56.20 | Primary
+(1 row)
+```
+
+API `/stats` показывает так же:
+
+<img src="img/4_haproxy/correct_check_switchover.png"/>
+
+
+
+
+## Итог проекта
+
+
+
 
 
 ## Список использованных источников:
@@ -2657,6 +3390,8 @@ Jan 18 08:41:26 ubt-pg-aduron-dbnode1 patroni[4449]: 2026-01-18 08:41:26.235 UTC
 4. [Cluster Id Mismatch - Reseting member ID](https://stackoverflow.com/questions/40585943/etcd-cluster-id-mistmatch)
 5. [Официальный сайт Патрони](https://patroni.readthedocs.io/en/latest/installation.html)
 6. [Документация Patroni - Configuration](https://patroni.readthedocs.io/en/latest/patroni_configuration.html)
+7. [HAProxy - комбинорование сертификата и ключа SSL](https://www.percona.com/blog/securing-patroni-rest-api-end-points-part-2-using-ssl-certificates/).
+
 
 ## Замечания
 
