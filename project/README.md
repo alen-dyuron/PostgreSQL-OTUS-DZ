@@ -1168,7 +1168,7 @@ etcdnm=$2
 sed -i "s/ubt-pg-aduron-etcd1/${etcdnm}/g" /usr/lib/systemd/system/etcd.service
 
 systemctl daemon-reload
-systemctl restart *etcd* 
+systemctl restart etcd
 ```
 
 После этого остановил первую ВМ.
